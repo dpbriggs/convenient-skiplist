@@ -23,7 +23,6 @@ impl<T: PartialEq> PartialEq<T> for NodeValue<T> {
 impl<T: PartialEq + PartialOrd + std::fmt::Debug> PartialOrd<NodeValue<T>> for NodeValue<T> {
     #[inline]
     fn partial_cmp(&self, other: &NodeValue<T>) -> Option<Ordering> {
-        // dbg!((self, other));
         match (self, other) {
             (NodeValue::NegInf, _) => Some(Ordering::Less),
             (_, NodeValue::PosInf) => Some(Ordering::Less),
@@ -76,7 +75,6 @@ impl<T> Drop for SkipList<T> {
                 }
             }
         }
-        // unsafe { drop(Box::from_raw(self.top_left.as_ptr())) }
     }
 }
 
@@ -165,7 +163,6 @@ impl<'a, T: PartialEq + PartialOrd + std::fmt::Debug> Iterator for SkipListIter<
                             // `right` is smaller to `self.item`, so let's go right.
                             Ordering::Less => {
                                 self.curr_node = right.as_ptr();
-                                // Some(std::mem::replace(&mut self.curr_node, right.as_ptr()))
                             }
                         }
                     }
@@ -240,63 +237,17 @@ impl<T: std::fmt::Debug + PartialEq + PartialOrd + Clone> SkipList<T> {
     pub fn contains(&mut self, item: &T) -> bool {
         unsafe {
             let last_ptr = self.iter(item).last().unwrap();
-            &(*last_ptr).value == item
+            if let Some(right) = &(*last_ptr).right {
+                &right.as_ref().value == item
+            } else {
+                false
+            }
         }
-        // unsafe {
-        //     let mut curr_node = self.top_left.as_ref();
-        //     loop {
-        //         if curr_node.value.item_eq(&item) {
-        //             return true;
-        //         }
-        //         // dbg!(curr_node);
-        //         match (&(*curr_node).right, &(*curr_node).down) {
-        //             (None, None) => return false,
-        //             // We can see right, and if it's equal, we're done.
-        //             (Some(right), _) if &right.as_ref().value == item => {
-        //                 return true;
-        //             }
-        //             // We can see right, and cannot go down, and item to the right is greater than us.
-        //             (Some(right), None) if &right.as_ref().value > item => {
-        //                 return false;
-        //             }
-        //             // We can see right and down, and item to the right is less than us.
-        //             (Some(right), Some(down)) if &right.as_ref().value > item => {
-        //                 curr_node = down.as_ref();
-        //             }
-        //             _ => return false,
-        //         }
-        //     }
-        // }
     }
 
     #[inline]
     fn path_to(&mut self, item: &T) -> Vec<*mut Node<T>> {
         self.iter(item).collect()
-        // let mut path: Vec<*mut Node<T>> = Vec::new();
-        // unsafe {
-        //     let mut curr_node = self.top_left.as_mut() as *mut Node<T>;
-        //     loop {
-        //         path.push(curr_node);
-        //         if &(*curr_node).value == item {
-        //             break;
-        //         }
-        //         match ((*curr_node).right, (*curr_node).down) {
-        //             (Some(right), _) if &right.as_ref().value <= item => curr_node = right.as_ptr(),
-        //             (Some(right), Some(down)) if &right.as_ref().value > item => {
-        //                 curr_node = down.as_ptr();
-        //             }
-        //             _ => break,
-        //         }
-        //     }
-        // }
-        // let mut last_node = *path.last().unwrap();
-        // unsafe {
-        //     while let Some(down) = (*last_node).down {
-        //         path.push(down.as_ptr());
-        //         last_node = down.as_ptr();
-        //     }
-        // }
-        // return path;
     }
 
     fn pos_neg_pair() -> NonNull<Node<T>> {
@@ -332,8 +283,6 @@ impl<T: std::fmt::Debug + PartialEq + PartialOrd + Clone> SkipList<T> {
         unsafe {
             loop {
                 while let Some(right) = curr_node.as_ref().right {
-                    // dbg!(&curr_node.as_ref().value);
-                    // dbg!(&right.as_ref().value);
                     assert!(curr_node.as_ref().value < right.as_ref().value);
                     curr_node = right;
                 }
@@ -365,7 +314,6 @@ impl<T: std::fmt::Debug + PartialEq + PartialOrd + Clone> SkipList<T> {
             return;
         }
         let height = get_level();
-        // dbg!(height);
         let additional_height_req: i32 = (height as i32 - self.height as i32) + 1;
         if additional_height_req > 0 {
             self.add_levels(additional_height_req as usize);
@@ -381,14 +329,7 @@ impl<T: std::fmt::Debug + PartialEq + PartialOrd + Clone> SkipList<T> {
         // As self.path_to returns all nodes immediately *left* of where we've inserted,
         // we just need to insert the nodes after.
         let mut node_below_me = None;
-        // dbg!("--------------------");
-        // dbg!(self.height);
-        // dbg!(height);
-        // dbg!(&item);
         for node in self.path_to(&item).into_iter().rev().take(height as usize) {
-            // unsafe {
-            //     // dbg!(&*node);
-            // }
             let mut new_node = SkipList::make_node(item.clone());
             let node: *mut Node<T> = node;
             unsafe {
@@ -398,15 +339,12 @@ impl<T: std::fmt::Debug + PartialEq + PartialOrd + Clone> SkipList<T> {
                 node_below_me = Some(new_node);
             }
         }
-        // dbg!("--------------------");
         #[cfg(debug_assertions)]
         {
             self.ensure_invariants()
         }
     }
 }
-
-// TODO: Not leak memory
 
 #[cfg(test)]
 mod tests {
@@ -415,18 +353,11 @@ mod tests {
     #[test]
     fn insert_no_panic() {
         let mut sl = SkipList::new();
-        sl.insert(10);
-        // dbg!(&sl);
-        sl.insert(30);
-        // dbg!(&sl);
-        sl.insert(50);
-        // dbg!(&sl);
-        sl.insert(5);
-        // dbg!(&sl);
-        sl.insert(0);
-        // dbg!(&sl);
-        sl.insert(3);
-        // dbg!(&sl);
+        for i in &[10, 30, 50, 5, 0, 3] {
+            sl.insert(*i);
+            assert!(sl.contains(&i));
+        }
+        #[cfg(debug_assertions)]
         sl.ensure_invariants();
     }
 }
