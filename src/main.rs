@@ -1,12 +1,12 @@
 use convenient_skiplist::SkipList;
 fn main() {
     let mut sk = SkipList::new();
-    dbg!(&sk);
-    sk.insert(0u32);
-    dbg!(&sk);
-    sk.insert(1u32);
-    dbg!(&sk);
-
+    // dbg!(&sk);
+    for i in 0..10u32 {
+        let h = Box::new([i, i, i]);
+        sk.insert(h);
+        dbg!(&sk);
+    }
     // dbg!(sk);
     // handle.write_all(format!("{:?}", sk).as_bytes());
     // dbg!(&sk);

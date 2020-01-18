@@ -11,6 +11,7 @@ enum NodeValue<T> {
 }
 
 impl<T: PartialEq> PartialEq<T> for NodeValue<T> {
+    #[inline]
     fn eq(&self, other: &T) -> bool {
         match self {
             NodeValue::Value(v) => v == other,
@@ -20,6 +21,7 @@ impl<T: PartialEq> PartialEq<T> for NodeValue<T> {
 }
 
 impl<T: PartialEq + PartialOrd + std::fmt::Debug> PartialOrd<NodeValue<T>> for NodeValue<T> {
+    #[inline]
     fn partial_cmp(&self, other: &NodeValue<T>) -> Option<Ordering> {
         // dbg!((self, other));
         match (self, other) {
@@ -32,55 +34,12 @@ impl<T: PartialEq + PartialOrd + std::fmt::Debug> PartialOrd<NodeValue<T>> for N
 }
 
 impl<T: PartialEq + PartialOrd> PartialOrd<T> for NodeValue<T> {
+    #[inline]
     fn partial_cmp(&self, other: &T) -> Option<Ordering> {
         match self {
             NodeValue::NegInf => Some(Ordering::Less),
             NodeValue::PosInf => Some(Ordering::Greater),
             NodeValue::Value(v) => v.partial_cmp(other),
-        }
-    }
-}
-
-impl<T: PartialEq + PartialOrd> NodeValue<T> {
-    #[inline]
-    fn eq(&self, other: &NodeValue<T>) -> bool {
-        match (self, other) {
-            (NodeValue::Value(l), NodeValue::Value(r)) => l == r,
-            _ => false,
-        }
-    }
-
-    fn item_eq(&self, item: &T) -> bool {
-        match self {
-            NodeValue::Value(v) => v == item,
-            _ => false,
-        }
-    }
-
-    fn item_ge(&self, item: &T) -> bool {
-        match self {
-            NodeValue::PosInf => false,
-            NodeValue::NegInf => true,
-            NodeValue::Value(v) => item > v,
-        }
-    }
-
-    fn item_le(&self, item: &T) -> bool {
-        match self {
-            NodeValue::PosInf => true,
-            NodeValue::NegInf => false,
-            NodeValue::Value(v) => item < v,
-        }
-    }
-
-    /// Is other greater than self?
-    #[inline]
-    fn other_ge(&self, other: &NodeValue<T>) -> bool {
-        match (self, other) {
-            (_, NodeValue::PosInf) => true,
-            (NodeValue::Value(l), NodeValue::Value(r)) => r > l,
-            (NodeValue::NegInf, _) => false,
-            _ => false,
         }
     }
 }
@@ -91,42 +50,63 @@ struct Node<T> {
     value: NodeValue<T>,
 }
 
-impl<T: fmt::Debug> fmt::Debug for Node<T> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "Node(\n")?;
-        write!(
-            f,
-            "  right: {:?},\n",
-            self.right
-                .map(|some| format!("{:?}", unsafe { &some.as_ref().value }))
-        )?;
-        write!(
-            f,
-            "  down: {:?},\n",
-            self.down
-                .map(|some| format!("{:?}", unsafe { &some.as_ref().value }))
-        )?;
-        write!(f, "  value: {:?}\n", self.value)?;
-        write!(f, ")")
+impl<T> Drop for SkipList<T> {
+    fn drop(&mut self) {
+        // Main idea: Start in top left and iterate row by row.
+        let mut curr_left_node = self.top_left.as_ptr();
+        let mut next_down;
+        let mut curr_node = self.top_left.as_ptr();
+        unsafe {
+            loop {
+                if let Some(down) = (*curr_left_node).down {
+                    next_down = Some(down.as_ptr());
+                } else {
+                    next_down = None;
+                }
+                while let Some(right) = (*curr_node).right {
+                    let garbage = std::mem::replace(&mut curr_node, right.as_ptr());
+                    drop(Box::from_raw(garbage));
+                }
+                drop(Box::from_raw(curr_node));
+                if let Some(next_down) = next_down {
+                    curr_left_node = next_down;
+                    curr_node = curr_left_node;
+                } else {
+                    break;
+                }
+            }
+        }
+        // unsafe { drop(Box::from_raw(self.top_left.as_ptr())) }
     }
 }
 
-impl<T> Node<T> {
-    fn insert_after(&mut self, node: *mut Node<T>) {
-        unsafe {
-            (*node).right = self.right;
-            self.right = Some(NonNull::new_unchecked(node))
-        }
+impl<T: fmt::Debug> fmt::Debug for Node<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(f, "Node(")?;
+        writeln!(
+            f,
+            "  right: {:?},",
+            self.right
+                .map(|some| format!("{:?}", unsafe { &some.as_ref().value }))
+        )?;
+        writeln!(
+            f,
+            "  down: {:?},",
+            self.down
+                .map(|some| format!("{:?}", unsafe { &some.as_ref().value }))
+        )?;
+        writeln!(f, "  value: {:?}", self.value)?;
+        write!(f, ")")
     }
 }
 
 impl<T: fmt::Debug> fmt::Debug for SkipList<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "SkipList(wall_height: {}), and table:\n", self.height)?;
+        writeln!(f, "SkipList(wall_height: {}), and table:", self.height)?;
         unsafe {
-            write!(
+            writeln!(
                 f,
-                "{:?} -> {:?}\n",
+                "{:?} -> {:?}",
                 self.top_left.as_ref().value,
                 self.top_left.as_ref().right.unwrap().as_ref().value
             )?;
@@ -139,7 +119,7 @@ impl<T: fmt::Debug> fmt::Debug for SkipList<T> {
                     curr_right = right.as_ref().right;
                 }
                 curr_down = down.as_ref().down;
-                write!(f, "\n")?;
+                writeln!(f)?;
             }
         }
         Ok(())
@@ -150,8 +130,6 @@ pub struct SkipList<T> {
     top_left: NonNull<Node<T>>,
     height: u32,
 }
-
-const MAX_ALLOWED_LEVELS: u32 = 16;
 
 fn get_level() -> u32 {
     let mut height = 1;
@@ -175,7 +153,6 @@ impl<'a, T: PartialEq + PartialOrd + std::fmt::Debug> Iterator for SkipListIter<
             return None;
         }
         unsafe {
-            // dbg!((self.item, &*self.curr_node));
             loop {
                 match ((*self.curr_node).right, (*self.curr_node).down) {
                     // We're somewhere in the middle of the skiplist, so if `item` is larger than our right,
@@ -212,6 +189,12 @@ impl<'a, T: PartialEq + PartialOrd + std::fmt::Debug> Iterator for SkipListIter<
                 }
             }
         }
+    }
+}
+
+impl<T: std::fmt::Debug + PartialEq + PartialOrd + Clone> Default for SkipList<T> {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -366,10 +349,10 @@ impl<T: std::fmt::Debug + PartialEq + PartialOrd + Clone> SkipList<T> {
 
     #[cfg(debug_assertions)]
     fn ensure_invariants(&self) {
-        // unsafe {
-        //     assert!(self.top_left.as_ref().right.unwrap().as_ref().value == NodeValue::PosInf)
-        // }
-        // self.ensure_rows_ordered();
+        unsafe {
+            assert!(self.top_left.as_ref().right.unwrap().as_ref().value == NodeValue::PosInf)
+        }
+        self.ensure_rows_ordered();
     }
 
     pub fn insert(&mut self, item: T) {
@@ -398,14 +381,14 @@ impl<T: std::fmt::Debug + PartialEq + PartialOrd + Clone> SkipList<T> {
         // As self.path_to returns all nodes immediately *left* of where we've inserted,
         // we just need to insert the nodes after.
         let mut node_below_me = None;
-        dbg!("--------------------");
-        dbg!(self.height);
-        dbg!(height);
-        dbg!(&item);
+        // dbg!("--------------------");
+        // dbg!(self.height);
+        // dbg!(height);
+        // dbg!(&item);
         for node in self.path_to(&item).into_iter().rev().take(height as usize) {
-            unsafe {
-                dbg!(&*node);
-            }
+            // unsafe {
+            //     // dbg!(&*node);
+            // }
             let mut new_node = SkipList::make_node(item.clone());
             let node: *mut Node<T> = node;
             unsafe {
@@ -415,7 +398,7 @@ impl<T: std::fmt::Debug + PartialEq + PartialOrd + Clone> SkipList<T> {
                 node_below_me = Some(new_node);
             }
         }
-        dbg!("--------------------");
+        // dbg!("--------------------");
         #[cfg(debug_assertions)]
         {
             self.ensure_invariants()
@@ -444,5 +427,6 @@ mod tests {
         // dbg!(&sl);
         sl.insert(3);
         // dbg!(&sl);
+        sl.ensure_invariants();
     }
 }
