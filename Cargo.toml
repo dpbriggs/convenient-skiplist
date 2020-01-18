@@ -1,0 +1,15 @@
+[package]
+name = "convenient-skiplist"
+version = "0.1.0"
+authors = ["David Briggs <david@dpbriggs.ca>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+rand = "0.7.3"
+
+[[bin]]
+name = "test"
+path = "src/main.rs"
+
