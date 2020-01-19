@@ -1,13 +1,24 @@
+use crate::iter::{IterAll, IterRangeWith, LeftBiasIter, RangeHint, SkipListRange};
 use rand;
 use rand::prelude::*;
 use std::cmp::{Ordering, PartialOrd};
 use std::fmt;
 use std::ptr::NonNull;
+mod iter;
 #[derive(PartialEq, Debug)]
 enum NodeValue<T> {
     NegInf,
     Value(T),
     PosInf,
+}
+
+impl<T> NodeValue<T> {
+    fn get_value<'a>(&'a self) -> &'a T {
+        match &self {
+            NodeValue::Value(v) => v,
+            _ => unreachable!(),
+        }
+    }
 }
 
 impl<T: PartialEq> PartialEq<T> for NodeValue<T> {
@@ -135,113 +146,6 @@ impl<T: PartialEq + PartialOrd + Clone> Default for SkipList<T> {
     }
 }
 
-pub struct SkipListRange<'a, T> {
-    curr_node: &'a Node<T>,
-    start: &'a T,
-    end: &'a T,
-}
-
-impl<'a, T: PartialOrd + PartialEq> Iterator for SkipListRange<'a, T> {
-    type Item = &'a T;
-    fn next(&mut self) -> Option<Self::Item> {
-        // Step 1: Find the first node >= self.start
-        // let ss = SkipListIter::new(self.start, unsafe {
-        //     self.curr_node as *const Node<T> as *mut Node<T>
-        // })
-        // .last();
-        while &self.curr_node.value < self.start {
-            match (self.curr_node.right, self.curr_node.down) {
-                (Some(right), Some(down)) => unsafe {
-                    if &right.as_ref().value < self.start {
-                        self.curr_node = right.as_ptr().as_ref().unwrap();
-                    } else {
-                        self.curr_node = down.as_ptr().as_ref().unwrap();
-                    }
-                },
-                (Some(right), None) => unsafe {
-                    if &right.as_ref().value < self.start {
-                        self.curr_node = right.as_ptr().as_ref().unwrap();
-                    } else if &right.as_ref().value > self.end {
-                        return None;
-                    } else {
-                        break; // ?
-                    }
-                },
-                _ => unreachable!(),
-            }
-        }
-        // Now, head to the bottom.
-        while let Some(down) = self.curr_node.down {
-            unsafe {
-                self.curr_node = down.as_ptr().as_ref().unwrap();
-            }
-        }
-        // curr_node is now >= self.start
-        while &self.curr_node.value <= self.end {
-            unsafe {
-                let next = self.curr_node.right.unwrap().as_ptr().as_ref().unwrap();
-                let curr_value = std::mem::replace(&mut self.curr_node, next);
-                match &curr_value.value {
-                    NodeValue::Value(v) => return Some(v),
-                    _ => continue,
-                }
-            }
-        }
-        None
-    }
-}
-
-/// Left-biased iteration towards `item`.
-///
-/// Guaranteed to return an iterator of items directly left of `item`,
-/// or where `item` should be in the skiplist.
-struct SkipListIter<'a, T> {
-    curr_node: *mut Node<T>,
-    item: &'a T,
-    finished: bool,
-}
-
-impl<'a, T: PartialEq + PartialOrd> Iterator for SkipListIter<'a, T> {
-    type Item = *mut Node<T>;
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.finished {
-            return None;
-        }
-        unsafe {
-            loop {
-                match ((*self.curr_node).right, (*self.curr_node).down) {
-                    // We're somewhere in the middle of the skiplist, so if `self.item` is larger than our right,
-                    (Some(right), Some(down)) => {
-                        // The node our right is smaller than `item`, so let's advance forward.
-                        if &right.as_ref().value < self.item {
-                            self.curr_node = right.as_ptr();
-                        } else {
-                            // The node to our right is the first seen that's larger than `item`,
-                            // So we yield it and head down.
-                            return Some(std::mem::replace(&mut self.curr_node, down.as_ptr()));
-                        }
-                    }
-                    // We're at the bottom of the skiplist
-                    (Some(right), None) => {
-                        // We're at the bottom row, and the item to our right >= `self.item`.
-                        // This is exactly the same as a linked list -- we don't want to continue further.
-                        if &right.as_ref().value >= self.item {
-                            self.finished = true;
-                            return Some(self.curr_node);
-                        } else {
-                            // The node to our right is _smaller_ than us, so continue forward.
-                            self.curr_node = right.as_ptr();
-                        }
-                    }
-                    // If we've upheld invariants correctly, there's always a right when iterating
-                    // Otherwise, some element was larger than NodeValue::PosInf.
-                    _ => unreachable!(),
-                }
-            }
-        }
-    }
-}
-
 /// Get the level of an item in the skiplist
 fn get_level() -> u32 {
     let mut height = 1;
@@ -282,20 +186,23 @@ impl<T: PartialEq + PartialOrd + Clone> SkipList<T> {
     }
 
     #[inline]
-    fn iter_left<'a>(&'a self, item: &'a T) -> SkipListIter<'a, T> {
-        SkipListIter {
-            curr_node: self.top_left.as_ptr(),
-            item,
-            finished: false,
-        }
+    fn iter_left<'a>(&'a self, item: &'a T) -> LeftBiasIter<'a, T> {
+        LeftBiasIter::new(self.top_left.as_ptr(), item)
+    }
+
+    pub fn iter_all<'a>(&'a self) -> IterAll<'a, T> {
+        unsafe { IterAll::new(self.top_left.as_ref()) }
     }
 
     pub fn range<'a>(&'a self, start: &'a T, end: &'a T) -> SkipListRange<'a, T> {
-        SkipListRange {
-            curr_node: unsafe { self.top_left.as_ref() },
-            start,
-            end,
-        }
+        SkipListRange::new(unsafe { self.top_left.as_ref() }, start, end)
+    }
+
+    pub fn range_with<'a, F>(&'a self, inclusive_fn: F) -> IterRangeWith<'a, T, F>
+    where
+        F: Fn(&T) -> RangeHint,
+    {
+        IterRangeWith::new(unsafe { self.top_left.as_ref() }, inclusive_fn)
     }
 
     #[inline]
