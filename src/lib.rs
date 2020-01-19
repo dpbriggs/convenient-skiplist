@@ -20,7 +20,7 @@ impl<T: PartialEq> PartialEq<T> for NodeValue<T> {
     }
 }
 
-impl<T: PartialEq + PartialOrd + std::fmt::Debug> PartialOrd<NodeValue<T>> for NodeValue<T> {
+impl<T: PartialEq + PartialOrd> PartialOrd<NodeValue<T>> for NodeValue<T> {
     #[inline]
     fn partial_cmp(&self, other: &NodeValue<T>) -> Option<Ordering> {
         match (self, other) {
@@ -47,6 +47,31 @@ struct Node<T> {
     right: Option<NonNull<Node<T>>>,
     down: Option<NonNull<Node<T>>>,
     value: NodeValue<T>,
+}
+
+impl<T: fmt::Debug> fmt::Debug for Node<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(f, "Node(")?;
+        writeln!(
+            f,
+            "  right: {:?},",
+            self.right
+                .map(|some| format!("{:?}", unsafe { &some.as_ref().value }))
+        )?;
+        writeln!(
+            f,
+            "  down: {:?},",
+            self.down
+                .map(|some| format!("{:?}", unsafe { &some.as_ref().value }))
+        )?;
+        writeln!(f, "  value: {:?}", self.value)?;
+        write!(f, ")")
+    }
+}
+
+pub struct SkipList<T> {
+    top_left: NonNull<Node<T>>,
+    height: u32,
 }
 
 impl<T> Drop for SkipList<T> {
@@ -78,26 +103,6 @@ impl<T> Drop for SkipList<T> {
     }
 }
 
-impl<T: fmt::Debug> fmt::Debug for Node<T> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        writeln!(f, "Node(")?;
-        writeln!(
-            f,
-            "  right: {:?},",
-            self.right
-                .map(|some| format!("{:?}", unsafe { &some.as_ref().value }))
-        )?;
-        writeln!(
-            f,
-            "  down: {:?},",
-            self.down
-                .map(|some| format!("{:?}", unsafe { &some.as_ref().value }))
-        )?;
-        writeln!(f, "  value: {:?}", self.value)?;
-        write!(f, ")")
-    }
-}
-
 impl<T: fmt::Debug> fmt::Debug for SkipList<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(f, "SkipList(wall_height: {}), and table:", self.height)?;
@@ -124,27 +129,79 @@ impl<T: fmt::Debug> fmt::Debug for SkipList<T> {
     }
 }
 
-pub struct SkipList<T> {
-    top_left: NonNull<Node<T>>,
-    height: u32,
-}
-
-fn get_level() -> u32 {
-    let mut height = 1;
-    let mut rng = rand::thread_rng();
-    while rng.gen::<f32>() >= 0.5 {
-        height += 1;
+impl<T: PartialEq + PartialOrd + Clone> Default for SkipList<T> {
+    fn default() -> Self {
+        Self::new()
     }
-    height
 }
 
+pub struct SkipListRange<'a, T> {
+    curr_node: &'a Node<T>,
+    start: &'a T,
+    end: &'a T,
+}
+
+impl<'a, T: PartialOrd + PartialEq> Iterator for SkipListRange<'a, T> {
+    type Item = &'a T;
+    fn next(&mut self) -> Option<Self::Item> {
+        // Step 1: Find the first node >= self.start
+        // let ss = SkipListIter::new(self.start, unsafe {
+        //     self.curr_node as *const Node<T> as *mut Node<T>
+        // })
+        // .last();
+        while &self.curr_node.value < self.start {
+            match (self.curr_node.right, self.curr_node.down) {
+                (Some(right), Some(down)) => unsafe {
+                    if &right.as_ref().value < self.start {
+                        self.curr_node = right.as_ptr().as_ref().unwrap();
+                    } else {
+                        self.curr_node = down.as_ptr().as_ref().unwrap();
+                    }
+                },
+                (Some(right), None) => unsafe {
+                    if &right.as_ref().value < self.start {
+                        self.curr_node = right.as_ptr().as_ref().unwrap();
+                    } else if &right.as_ref().value > self.end {
+                        return None;
+                    } else {
+                        break; // ?
+                    }
+                },
+                _ => unreachable!(),
+            }
+        }
+        // Now, head to the bottom.
+        while let Some(down) = self.curr_node.down {
+            unsafe {
+                self.curr_node = down.as_ptr().as_ref().unwrap();
+            }
+        }
+        // curr_node is now >= self.start
+        while &self.curr_node.value <= self.end {
+            unsafe {
+                let next = self.curr_node.right.unwrap().as_ptr().as_ref().unwrap();
+                let curr_value = std::mem::replace(&mut self.curr_node, next);
+                match &curr_value.value {
+                    NodeValue::Value(v) => return Some(v),
+                    _ => continue,
+                }
+            }
+        }
+        None
+    }
+}
+
+/// Left-biased iteration towards `item`.
+///
+/// Guaranteed to return an iterator of items directly left of `item`,
+/// or where `item` should be in the skiplist.
 struct SkipListIter<'a, T> {
     curr_node: *mut Node<T>,
     item: &'a T,
     finished: bool,
 }
 
-impl<'a, T: PartialEq + PartialOrd + std::fmt::Debug> Iterator for SkipListIter<'a, T> {
+impl<'a, T: PartialEq + PartialOrd> Iterator for SkipListIter<'a, T> {
     type Item = *mut Node<T>;
     fn next(&mut self) -> Option<Self::Item> {
         if self.finished {
@@ -153,31 +210,27 @@ impl<'a, T: PartialEq + PartialOrd + std::fmt::Debug> Iterator for SkipListIter<
         unsafe {
             loop {
                 match ((*self.curr_node).right, (*self.curr_node).down) {
-                    // We're somewhere in the middle of the skiplist, so if `item` is larger than our right,
+                    // We're somewhere in the middle of the skiplist, so if `self.item` is larger than our right,
                     (Some(right), Some(down)) => {
-                        match right.as_ref().value.partial_cmp(self.item).unwrap() {
-                            // `right` is larger OR equal than `self.item`, so let's go down.
-                            Ordering::Greater | Ordering::Equal => {
-                                return Some(std::mem::replace(&mut self.curr_node, down.as_ptr()));
-                            }
-                            // `right` is smaller to `self.item`, so let's go right.
-                            Ordering::Less => {
-                                self.curr_node = right.as_ptr();
-                            }
+                        // The node our right is smaller than `item`, so let's advance forward.
+                        if &right.as_ref().value < self.item {
+                            self.curr_node = right.as_ptr();
+                        } else {
+                            // The node to our right is the first seen that's larger than `item`,
+                            // So we yield it and head down.
+                            return Some(std::mem::replace(&mut self.curr_node, down.as_ptr()));
                         }
                     }
                     // We're at the bottom of the skiplist
                     (Some(right), None) => {
-                        match right.as_ref().value.partial_cmp(self.item).unwrap() {
-                            // `right` >= `self.item`, and we're at the bottom, so stop.
-                            Ordering::Greater | Ordering::Equal => {
-                                self.finished = true;
-                                return Some(self.curr_node);
-                            }
-                            // `right` is smaller than `self.item`, so let's advance right.
-                            Ordering::Less => {
-                                self.curr_node = right.as_ptr();
-                            }
+                        // We're at the bottom row, and the item to our right >= `self.item`.
+                        // This is exactly the same as a linked list -- we don't want to continue further.
+                        if &right.as_ref().value >= self.item {
+                            self.finished = true;
+                            return Some(self.curr_node);
+                        } else {
+                            // The node to our right is _smaller_ than us, so continue forward.
+                            self.curr_node = right.as_ptr();
                         }
                     }
                     // If we've upheld invariants correctly, there's always a right when iterating
@@ -189,13 +242,17 @@ impl<'a, T: PartialEq + PartialOrd + std::fmt::Debug> Iterator for SkipListIter<
     }
 }
 
-impl<T: std::fmt::Debug + PartialEq + PartialOrd + Clone> Default for SkipList<T> {
-    fn default() -> Self {
-        Self::new()
+/// Get the level of an item in the skiplist
+fn get_level() -> u32 {
+    let mut height = 1;
+    let mut rng = rand::thread_rng();
+    while rng.gen::<f32>() >= 0.5 {
+        height += 1;
     }
+    height
 }
 
-impl<T: std::fmt::Debug + PartialEq + PartialOrd + Clone> SkipList<T> {
+impl<T: PartialEq + PartialOrd + Clone> SkipList<T> {
     pub fn new() -> SkipList<T> {
         let mut sk = SkipList {
             top_left: SkipList::pos_neg_pair(),
@@ -225,7 +282,7 @@ impl<T: std::fmt::Debug + PartialEq + PartialOrd + Clone> SkipList<T> {
     }
 
     #[inline]
-    fn iter<'a>(&'a self, item: &'a T) -> SkipListIter<'a, T> {
+    fn iter_left<'a>(&'a self, item: &'a T) -> SkipListIter<'a, T> {
         SkipListIter {
             curr_node: self.top_left.as_ptr(),
             item,
@@ -233,10 +290,18 @@ impl<T: std::fmt::Debug + PartialEq + PartialOrd + Clone> SkipList<T> {
         }
     }
 
+    pub fn range<'a>(&'a self, start: &'a T, end: &'a T) -> SkipListRange<'a, T> {
+        SkipListRange {
+            curr_node: unsafe { self.top_left.as_ref() },
+            start,
+            end,
+        }
+    }
+
     #[inline]
     pub fn contains(&mut self, item: &T) -> bool {
         unsafe {
-            let last_ptr = self.iter(item).last().unwrap();
+            let last_ptr = self.iter_left(item).last().unwrap();
             if let Some(right) = &(*last_ptr).right {
                 &right.as_ref().value == item
             } else {
@@ -247,7 +312,7 @@ impl<T: std::fmt::Debug + PartialEq + PartialOrd + Clone> SkipList<T> {
 
     #[inline]
     fn path_to(&mut self, item: &T) -> Vec<*mut Node<T>> {
-        self.iter(item).collect()
+        self.iter_left(item).collect()
     }
 
     fn pos_neg_pair() -> NonNull<Node<T>> {
@@ -276,6 +341,33 @@ impl<T: std::fmt::Debug + PartialEq + PartialOrd + Clone> SkipList<T> {
             NonNull::new_unchecked(Box::into_raw(node))
         }
     }
+
+    #[cfg(debug_assertions)]
+    fn ensure_columns_same_value(&self) {
+        let mut left_row = self.top_left;
+        let mut curr_node = self.top_left;
+        unsafe {
+            loop {
+                while let Some(right) = curr_node.as_ref().right {
+                    let curr_value = &curr_node.as_ref().value;
+                    let mut curr_down = curr_node;
+                    while let Some(down) = curr_down.as_ref().down {
+                        assert!(&down.as_ref().value == curr_value);
+                        curr_down = down;
+                    }
+                    curr_node = right;
+                }
+                // Now, move a an entire row down.
+                if let Some(down) = left_row.as_ref().down {
+                    left_row = down;
+                    curr_node = left_row;
+                } else {
+                    break;
+                }
+            }
+        }
+    }
+
     #[cfg(debug_assertions)]
     fn ensure_rows_ordered(&self) {
         let mut left_row = self.top_left;
@@ -302,6 +394,7 @@ impl<T: std::fmt::Debug + PartialEq + PartialOrd + Clone> SkipList<T> {
             assert!(self.top_left.as_ref().right.unwrap().as_ref().value == NodeValue::PosInf)
         }
         self.ensure_rows_ordered();
+        self.ensure_columns_same_value();
     }
 
     pub fn insert(&mut self, item: T) {
@@ -349,6 +442,7 @@ impl<T: std::fmt::Debug + PartialEq + PartialOrd + Clone> SkipList<T> {
 #[cfg(test)]
 mod tests {
     use crate::SkipList;
+    use std::collections::HashSet;
 
     #[test]
     fn insert_no_panic() {
@@ -360,4 +454,42 @@ mod tests {
         #[cfg(debug_assertions)]
         sl.ensure_invariants();
     }
+
+    #[test]
+    fn test_inclusive_range() {
+        let mut sl = SkipList::new();
+        let values: &[i32] = &[10, 30, 50, 5, 0, 3];
+        for i in &[10, 30, 50, 5, 0, 3] {
+            sl.insert(*i);
+            assert!(sl.contains(&i));
+        }
+        let lower = 3;
+        let upper = 30;
+        let v: HashSet<i32> = sl.range(&lower, &upper).cloned().collect();
+        dbg!(&v);
+        for expected_value in values.iter().filter(|&&i| lower <= i && i <= upper) {
+            dbg!(&expected_value);
+            assert!(v.contains(expected_value));
+        }
+        let right_empty: HashSet<i32> = sl.range(&100, &1000).cloned().collect();
+        dbg!(&right_empty);
+        assert!(right_empty.is_empty());
+
+        let left_empty: HashSet<i32> = sl.range(&-2, &-1).cloned().collect();
+        dbg!(&left_empty);
+        assert!(left_empty.is_empty());
+
+        // Excessive range
+        let lower = -10;
+        let upper = 1000;
+        let v: HashSet<i32> = sl.range(&lower, &upper).cloned().collect();
+        dbg!(&v);
+        for expected_value in values.iter().filter(|&&i| lower <= i && i <= upper) {
+            dbg!(&expected_value);
+            assert!(v.contains(expected_value));
+        }
+    }
+
+    #[test]
+    fn random_inclusive_range() {}
 }

@@ -3,8 +3,7 @@ fn main() {
     let mut sk = SkipList::new();
     // dbg!(&sk);
     for i in 0..10u32 {
-        let h = Box::new([i, i, i]);
-        sk.insert(h);
+        sk.insert(i);
         dbg!(&sk);
     }
     // dbg!(sk);
