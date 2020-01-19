@@ -1,7 +1,9 @@
 use crate::{Node, NodeValue};
-use std::cmp::Ordering;
 
-/// IterAll is an
+/// IterAll is a iterator struct to iterate over the entire
+/// linked list.
+///
+/// You should use the method `iter_all` on [SkipList](convenient-skiplist::SkipList)
 pub struct IterAll<'a, T> {
     curr_node: &'a Node<T>,
     at_bottom: bool,
@@ -9,6 +11,7 @@ pub struct IterAll<'a, T> {
 }
 
 impl<'a, T> IterAll<'a, T> {
+    #[inline]
     pub(crate) fn new(curr_node: &'a Node<T>) -> Self {
         Self {
             curr_node,
@@ -18,7 +21,7 @@ impl<'a, T> IterAll<'a, T> {
     }
 }
 
-impl<'a, T: PartialEq + PartialOrd> Iterator for IterAll<'a, T> {
+impl<'a, T: PartialOrd> Iterator for IterAll<'a, T> {
     type Item = &'a T;
     fn next(&mut self) -> Option<Self::Item> {
         if self.finished {
@@ -47,11 +50,11 @@ impl<'a, T: PartialEq + PartialOrd> Iterator for IterAll<'a, T> {
             };
             if self.curr_node.right.unwrap().as_ref().value == NodeValue::PosInf {
                 self.finished = true;
-                return Some(self.curr_node.value.get_value());
+                Some(self.curr_node.value.get_value())
             } else {
                 let next = self.curr_node.right.unwrap().as_ptr().as_ref().unwrap();
                 let to_ret = std::mem::replace(&mut self.curr_node, next);
-                return Some(to_ret.value.get_value());
+                Some(to_ret.value.get_value())
             }
         }
     }
@@ -73,7 +76,7 @@ impl<'a, T> SkipListRange<'a, T> {
     }
 }
 
-impl<'a, T: PartialOrd + PartialEq> Iterator for SkipListRange<'a, T> {
+impl<'a, T: PartialOrd> Iterator for SkipListRange<'a, T> {
     type Item = &'a T;
     fn next(&mut self) -> Option<Self::Item> {
         // Step 1: Find the first node >= self.start
@@ -139,7 +142,7 @@ impl<'a, T> LeftBiasIter<'a, T> {
     }
 }
 
-impl<'a, T: PartialEq + PartialOrd> Iterator for LeftBiasIter<'a, T> {
+impl<'a, T: PartialOrd> Iterator for LeftBiasIter<'a, T> {
     type Item = *mut Node<T>;
     fn next(&mut self) -> Option<Self::Item> {
         if self.finished {
@@ -186,6 +189,7 @@ impl<'a, T: PartialEq + PartialOrd> Iterator for LeftBiasIter<'a, T> {
 /// - Larger (outside) the desired range
 ///
 /// Used with IterRangeWith, or `range_with`
+#[derive(Debug)]
 pub enum RangeHint {
     SmallerThanRange,
     InRange,
@@ -194,30 +198,34 @@ pub enum RangeHint {
 
 pub struct IterRangeWith<'a, T, F>
 where
-    T: PartialEq + PartialOrd,
+    T: PartialOrd,
     F: Fn(&'a T) -> RangeHint,
 {
     inclusive_fn: F,
     curr_node: &'a Node<T>,
+    at_bottom: bool,
 }
 
 impl<'a, T, F> IterRangeWith<'a, T, F>
 where
-    T: PartialEq + PartialOrd,
+    T: PartialOrd,
     F: Fn(&T) -> RangeHint,
 {
+    #[inline]
     pub(crate) fn new(curr_node: &'a Node<T>, inclusive_fn: F) -> Self {
         Self {
             inclusive_fn,
             curr_node,
+            at_bottom: false,
         }
     }
 
+    // Is `item` smaller than our range?
     #[inline]
-    fn item_lt(&self, item: &NodeValue<T>) -> bool {
+    fn item_smaller_than_range(&self, item: &NodeValue<T>) -> bool {
         match item {
-            NodeValue::NegInf => false,
-            NodeValue::PosInf => true,
+            NodeValue::NegInf => true,
+            NodeValue::PosInf => false,
             NodeValue::Value(v) => {
                 if let RangeHint::SmallerThanRange = (self.inclusive_fn)(v) {
                     true
@@ -228,26 +236,13 @@ where
         }
     }
 
+    #[inline]
     fn item_in_range(&self, item: &NodeValue<T>) -> bool {
         match item {
             NodeValue::NegInf => false,
-            NodeValue::PosInf => true,
+            NodeValue::PosInf => false,
             NodeValue::Value(v) => {
                 if let RangeHint::InRange = (self.inclusive_fn)(v) {
-                    true
-                } else {
-                    false
-                }
-            }
-        }
-    }
-
-    fn item_gt(&self, item: &NodeValue<T>) -> bool {
-        match item {
-            NodeValue::NegInf => false,
-            NodeValue::PosInf => true,
-            NodeValue::Value(v) => {
-                if let RangeHint::LargerThanRange = (self.inclusive_fn)(v) {
                     true
                 } else {
                     false
@@ -259,53 +254,60 @@ where
 
 impl<'a, T, F> Iterator for IterRangeWith<'a, T, F>
 where
-    T: PartialEq + PartialOrd,
+    T: PartialOrd,
     F: Fn(&T) -> RangeHint,
 {
     type Item = &'a T;
     fn next(&mut self) -> Option<Self::Item> {
-        while self.item_lt(&self.curr_node.value) {
+        // Step 1: Find the *largest* element smaller than our range.
+        // This process is _very_ similar to LeftBiasIter, where
+        // we search for the element immediately left of the desired one.
+        while !self.at_bottom {
             match (self.curr_node.right, self.curr_node.down) {
+                // We're in the middle of the skiplist somewhere
                 (Some(right), Some(down)) => unsafe {
-                    if self.item_lt(&right.as_ref().value) {
+                    // The item to our right is _smaller_ than our range,
+                    // so we get to skip right.
+                    if self.item_smaller_than_range(&right.as_ref().value) {
                         self.curr_node = right.as_ptr().as_ref().unwrap();
                     } else {
+                        // The item is in our range, or larger, so we need to go down.
                         self.curr_node = down.as_ptr().as_ref().unwrap();
                     }
                 },
+                // We're at the bottom of the skiplist
                 (Some(right), None) => unsafe {
-                    if self.item_lt(&right.as_ref().value) {
+                    // The item immediately to our right is _smaller_ than the range,
+                    // so advance right.
+                    if self.item_smaller_than_range(&right.as_ref().value) {
                         self.curr_node = right.as_ptr().as_ref().unwrap();
-                    } else if self.item_gt(&right.as_ref().value) {
-                        return None;
                     } else {
-                        break; // ?
+                        // The element to our right is in the range, or larger!
+                        self.at_bottom = true;
+                        // We're exactly ONE step away from the first item in the range,
+                        // so advance one to the right
+                        self.curr_node = self.curr_node.right.unwrap().as_ptr().as_ref().unwrap();
+                        break;
                     }
                 },
                 _ => unreachable!(),
             }
         }
-        // Now, head to the bottom.
-        while let Some(down) = self.curr_node.down {
+        // Verify that we are, indeed, at the bottom
+        debug_assert!(self.curr_node.down.is_none());
+        if self.item_in_range(&self.curr_node.value) {
             unsafe {
-                self.curr_node = down.as_ptr().as_ref().unwrap();
-            }
-        }
-        // curr_node is now >= self.start
-        while !self.item_gt(&self.curr_node.value) {
-            unsafe {
+                let ret_val = &self.curr_node.value;
                 let next = self.curr_node.right.unwrap().as_ptr().as_ref().unwrap();
-                let curr_value = std::mem::replace(&mut self.curr_node, next);
-                match &curr_value.value {
-                    NodeValue::Value(v) => return Some(v),
-                    _ => continue,
-                }
+                self.curr_node = next;
+                return Some(ret_val.get_value());
             }
         }
         None
     }
 }
 
+#[cfg(test)]
 mod tests {
     use crate::RangeHint;
     use crate::SkipList;
@@ -326,9 +328,42 @@ mod tests {
     #[test]
     fn test_empty() {
         let sk = SkipList::<u32>::new();
-        dbg!(&sk);
         let foo: Vec<_> = sk.iter_all().cloned().collect();
         assert!(foo.is_empty());
+    }
+
+    #[test]
+    fn test_inclusion_fn_range_with() {
+        use crate::iter::IterRangeWith;
+        use crate::{Node, NodeValue};
+        let n = Node {
+            right: None,
+            down: None,
+            value: NodeValue::Value(3),
+        };
+        let srw = IterRangeWith::new(&n, |&i| {
+            if i < 2 {
+                RangeHint::SmallerThanRange
+            } else if i > 4 {
+                RangeHint::LargerThanRange
+            } else {
+                RangeHint::InRange
+            }
+        });
+        assert!(srw.item_smaller_than_range(&NodeValue::Value(1)) == true);
+        assert!(srw.item_smaller_than_range(&NodeValue::Value(2)) == false);
+        assert!(srw.item_smaller_than_range(&NodeValue::Value(4)) == false);
+        assert!(srw.item_smaller_than_range(&NodeValue::Value(5)) == false);
+        assert!(srw.item_smaller_than_range(&NodeValue::NegInf) == true);
+        assert!(srw.item_smaller_than_range(&NodeValue::PosInf) == false);
+
+        assert!(srw.item_in_range(&NodeValue::Value(1)) == false);
+        assert!(srw.item_in_range(&NodeValue::Value(2)) == true);
+        assert!(srw.item_in_range(&NodeValue::Value(3)) == true);
+        assert!(srw.item_in_range(&NodeValue::Value(4)) == true);
+        assert!(srw.item_in_range(&NodeValue::Value(5)) == false);
+        assert!(srw.item_in_range(&NodeValue::PosInf) == false);
+        assert!(srw.item_in_range(&NodeValue::NegInf) == false);
     }
 
     #[test]
@@ -353,4 +388,130 @@ mod tests {
             .collect();
         assert_eq!(f, vec![2, 3, 4]);
     }
+
+    #[test]
+    fn test_range_with_empty() {
+        use crate::iter::RangeHint;
+        let sk = SkipList::<u32>::new();
+        let f: Vec<_> = sk
+            .range_with(|&i| {
+                if i < 2 {
+                    RangeHint::SmallerThanRange
+                } else if i > 4 {
+                    RangeHint::LargerThanRange
+                } else {
+                    RangeHint::InRange
+                }
+            })
+            .cloned()
+            .collect();
+        assert_eq!(f, vec![]);
+    }
+
+    #[test]
+    fn test_range_with_all() {
+        use crate::iter::RangeHint;
+        let mut sk = SkipList::<u32>::new();
+        let expected = &[0, 1, 2, 3, 4, 5];
+        for e in expected {
+            sk.insert(*e);
+        }
+        let f: Vec<_> = sk.range_with(|&_i| RangeHint::InRange).cloned().collect();
+        assert_eq!(f, expected.to_vec());
+    }
+
+    #[test]
+    fn test_range_with_none() {
+        use crate::iter::RangeHint;
+        let mut sk = SkipList::<u32>::new();
+        let expected = &[0, 1, 2, 3, 4, 5];
+        for e in expected {
+            sk.insert(*e);
+        }
+        let f: Vec<_> = sk
+            .range_with(|&_i| RangeHint::SmallerThanRange)
+            .cloned()
+            .collect();
+        assert_eq!(f, vec![]);
+        let f: Vec<_> = sk
+            .range_with(|&_i| RangeHint::LargerThanRange)
+            .cloned()
+            .collect();
+        assert_eq!(f, vec![]);
+    }
+
+    // You should run this test with miri
+    #[test]
+    fn test_range_pathological_no_panic() {
+        use crate::iter::RangeHint;
+        use rand;
+        use rand::prelude::*;
+        let mut sk = SkipList::<u32>::new();
+        let expected = &[0, 1, 2, 3, 4, 5];
+        for e in expected {
+            sk.insert(*e);
+        }
+        let _f: Vec<_> = sk
+            .range_with(|&_i| {
+                let mut thrng = rand::thread_rng();
+                let r: f32 = thrng.gen();
+                if 0.0 < r && r < 0.33 {
+                    RangeHint::SmallerThanRange
+                } else if r < 0.66 {
+                    RangeHint::InRange
+                } else {
+                    RangeHint::LargerThanRange
+                }
+            })
+            .cloned()
+            .collect();
+    }
 }
+
+// #[cfg(test)]
+// mod bench {
+//     extern crate test;
+//     use crate::iter::RangeHint;
+//     use crate::SkipList;
+//     use test::Bencher;
+//     #[bench]
+//     fn bench_iter_all(b: &mut Bencher) {
+//         let mut sk = SkipList::<u32>::new();
+//         let upper = 500;
+//         for i in 0..upper {
+//             sk.insert(i);
+//         }
+//         b.iter(|| for _i in sk.iter_all() {});
+//     }
+
+//     #[bench]
+//     fn bench_iter_range(b: &mut Bencher) {
+//         let mut sk = SkipList::<u32>::new();
+//         let upper = 500;
+//         for i in 0..upper {
+//             sk.insert(i);
+//         }
+//         b.iter(|| for _i in sk.range(&(upper / 2), &(upper / 2 + upper / 5)) {});
+//     }
+
+//     #[bench]
+//     fn bench_iter_range_with(b: &mut Bencher) {
+//         let mut sk = SkipList::<u32>::new();
+//         let upper = 500;
+//         for i in 0..upper {
+//             sk.insert(i);
+//         }
+//         b.iter(|| {
+//             let f = sk.range_with(|&i| {
+//                 if i < (upper / 2) {
+//                     RangeHint::SmallerThanRange
+//                 } else if i > (upper / 2 + upper / 5) {
+//                     RangeHint::LargerThanRange
+//                 } else {
+//                     RangeHint::InRange
+//                 }
+//             });
+//             for _i in f {}
+//         });
+//     }
+// }

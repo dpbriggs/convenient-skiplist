@@ -1,10 +1,11 @@
+#![feature(test)]
 use crate::iter::{IterAll, IterRangeWith, LeftBiasIter, RangeHint, SkipListRange};
 use rand;
 use rand::prelude::*;
 use std::cmp::{Ordering, PartialOrd};
 use std::fmt;
 use std::ptr::NonNull;
-mod iter;
+pub mod iter;
 #[derive(PartialEq, Debug)]
 enum NodeValue<T> {
     NegInf,
@@ -13,7 +14,7 @@ enum NodeValue<T> {
 }
 
 impl<T> NodeValue<T> {
-    fn get_value<'a>(&'a self) -> &'a T {
+    fn get_value(&self) -> &T {
         match &self {
             NodeValue::Value(v) => v,
             _ => unreachable!(),
@@ -31,7 +32,7 @@ impl<T: PartialEq> PartialEq<T> for NodeValue<T> {
     }
 }
 
-impl<T: PartialEq + PartialOrd> PartialOrd<NodeValue<T>> for NodeValue<T> {
+impl<T: PartialOrd> PartialOrd<NodeValue<T>> for NodeValue<T> {
     #[inline]
     fn partial_cmp(&self, other: &NodeValue<T>) -> Option<Ordering> {
         match (self, other) {
@@ -43,7 +44,7 @@ impl<T: PartialEq + PartialOrd> PartialOrd<NodeValue<T>> for NodeValue<T> {
     }
 }
 
-impl<T: PartialEq + PartialOrd> PartialOrd<T> for NodeValue<T> {
+impl<T: PartialOrd> PartialOrd<T> for NodeValue<T> {
     #[inline]
     fn partial_cmp(&self, other: &T) -> Option<Ordering> {
         match self {
@@ -140,7 +141,7 @@ impl<T: fmt::Debug> fmt::Debug for SkipList<T> {
     }
 }
 
-impl<T: PartialEq + PartialOrd + Clone> Default for SkipList<T> {
+impl<T: PartialOrd + Clone> Default for SkipList<T> {
     fn default() -> Self {
         Self::new()
     }
@@ -156,7 +157,7 @@ fn get_level() -> u32 {
     height
 }
 
-impl<T: PartialEq + PartialOrd + Clone> SkipList<T> {
+impl<T: PartialOrd + Clone> SkipList<T> {
     pub fn new() -> SkipList<T> {
         let mut sk = SkipList {
             top_left: SkipList::pos_neg_pair(),
@@ -190,15 +191,18 @@ impl<T: PartialEq + PartialOrd + Clone> SkipList<T> {
         LeftBiasIter::new(self.top_left.as_ptr(), item)
     }
 
-    pub fn iter_all<'a>(&'a self) -> IterAll<'a, T> {
+    #[inline]
+    pub fn iter_all(&self) -> IterAll<T> {
         unsafe { IterAll::new(self.top_left.as_ref()) }
     }
 
+    #[inline]
     pub fn range<'a>(&'a self, start: &'a T, end: &'a T) -> SkipListRange<'a, T> {
         SkipListRange::new(unsafe { self.top_left.as_ref() }, start, end)
     }
 
-    pub fn range_with<'a, F>(&'a self, inclusive_fn: F) -> IterRangeWith<'a, T, F>
+    #[inline]
+    pub fn range_with<F>(&self, inclusive_fn: F) -> IterRangeWith<T, F>
     where
         F: Fn(&T) -> RangeHint,
     {

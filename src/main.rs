@@ -1,19 +1,15 @@
 use convenient_skiplist::SkipList;
+
 fn main() {
+    // Make a new skiplist
     let mut sk = SkipList::new();
-    // dbg!(&sk);
-    for i in 0..10u32 {
+    for i in 0..5u32 {
+        // Inserts are O(log(n)) on average
         sk.insert(i);
-        dbg!(&sk);
     }
-    // dbg!(sk);
-    // handle.write_all(format!("{:?}", sk).as_bytes());
-    // dbg!(&sk);
-    // sk.insert(1u32);
-    // dbg!(&sk);
-    // sk.insert(2u32);
-    // dbg!(&sk);
-    // sk.insert(3u32);
-    // dbg!(&sk);
-    // sk.insert(4u32);
+    // You can print the skiplist!
+    dbg!(&sk);
+    // You can check if the skiplist contains an element, O(log(n))
+    assert!(sk.contains(&0));
+    assert!(!sk.contains(&10));
 }

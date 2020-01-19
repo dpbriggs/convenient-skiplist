@@ -3,7 +3,12 @@ name = "convenient-skiplist"
 version = "0.1.0"
 authors = ["David Briggs <david@dpbriggs.ca>"]
 edition = "2018"
-
+license = "GPLv3"
+repository = "https://github.com/dpbriggs/convenient-skiplist"
+keywords = ["skiplist", "serde", "advanced", "performant"]
+categories = ["data-structures"]
+documentation = ""
+readme = "README.md"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
@@ -13,3 +18,9 @@ rand = "0.7.3"
 name = "test"
 path = "src/main.rs"
 
+[dev-dependencies]
+criterion = "0.3"
+
+[[bench]]
+name = "convenient_skiplist"
+harness = false
