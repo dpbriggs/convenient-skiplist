@@ -1,4 +1,4 @@
-use convenient_skiplist::{iter::RangeHint, SkipList};
+use convenient_skiplist::{RangeHint, SkipList};
 
 #[global_allocator]
 static ALLOCATOR: checkers::Allocator = checkers::Allocator::system();

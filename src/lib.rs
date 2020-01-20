@@ -1,11 +1,11 @@
-#![feature(test)]
-use crate::iter::{IterAll, IterRangeWith, LeftBiasIter, RangeHint, SkipListRange};
+use crate::iter::{IterAll, IterRangeWith, LeftBiasIter, SkipListRange};
 use rand;
 use rand::prelude::*;
 use std::cmp::{Ordering, PartialOrd};
 use std::fmt;
 use std::ptr::NonNull;
 pub mod iter;
+
 #[derive(PartialEq, Debug)]
 enum NodeValue<T> {
     NegInf,
@@ -79,6 +79,20 @@ impl<T: fmt::Debug> fmt::Debug for Node<T> {
         writeln!(f, "  value: {:?}", self.value)?;
         write!(f, ")")
     }
+}
+
+/// Hint that the current value `item` is:
+///
+/// - SmallerThanRange: `item` is strictly smaller than the range.
+/// - InRange: `item` is in the range.
+/// - LargerThanRange: `item` is strictly larger than the range.
+///
+/// Used with IterRangeWith, or `range_with`
+#[derive(Debug)]
+pub enum RangeHint {
+    SmallerThanRange,
+    InRange,
+    LargerThanRange,
 }
 
 pub struct SkipList<T> {
@@ -158,6 +172,17 @@ fn get_level() -> u32 {
 }
 
 impl<T: PartialOrd + Clone> SkipList<T> {
+    /// Make a new, empty SkipList. By default there is three levels.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use convenient_skiplist::SkipList;
+    /// let mut sk = SkipList::new();
+    /// sk.insert(0u32);
+    ///
+    /// assert!(sk.contains(&0));
+    /// ```
     pub fn new() -> SkipList<T> {
         let mut sk = SkipList {
             top_left: SkipList::pos_neg_pair(),
@@ -191,16 +216,88 @@ impl<T: PartialOrd + Clone> SkipList<T> {
         LeftBiasIter::new(self.top_left.as_ptr(), item)
     }
 
+    /// Iterator over all elements in the Skiplist.
+    ///
+    /// This runs in O(n) time.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use convenient_skiplist::SkipList;
+    /// let mut sk = SkipList::new();
+    /// sk.insert(0u32);
+    /// sk.insert(1u32);
+    /// sk.insert(2u32);
+    /// for item in sk.iter_all() {
+    ///     println!("{:?}", item);
+    /// }
+    /// ```
     #[inline]
     pub fn iter_all(&self) -> IterAll<T> {
         unsafe { IterAll::new(self.top_left.as_ref()) }
     }
 
+    /// Iterator over an inclusive range of elements in the SkipList.
+    ///
+    /// This runs in O(logn + k), where k is the width of range.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use convenient_skiplist::SkipList;
+    /// let mut sk = SkipList::new();
+    /// for item in 0..100 {
+    ///     sk.insert(item);
+    /// }
+    ///
+    /// for item in sk.range(&20, &40) {
+    ///     println!("{}", item); // First prints 20, then 21, ... and finally 40.
+    /// }
+    /// ```
     #[inline]
     pub fn range<'a>(&'a self, start: &'a T, end: &'a T) -> SkipListRange<'a, T> {
         SkipListRange::new(unsafe { self.top_left.as_ref() }, start, end)
     }
 
+    /// Iterator over an inclusive range of elements in the SkipList,
+    /// as defined by the `inclusive_fn`.
+    /// This runs in O(logn + k), where k is the width of range.
+    ///
+    /// As the skiplist is ordered in an ascending way, `inclusive_fn` should be
+    /// structured with the idea in mind that you're going to see the smallest elements
+    /// first. `inclusive_fn` should be designed to extract a *single contiguous
+    /// stretch of elements*.
+    ///
+    /// This iterator will find the smallest element in the range,
+    /// and then return elements until it finds the first element
+    /// larger than the range.
+    ///
+    /// If multiple ranges are desired, you can use `range_with` multiple times,
+    /// and simply use the last element of the previous run as the start of
+    /// the next run.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use convenient_skiplist::{RangeHint, SkipList};
+    /// let mut sk = SkipList::new();
+    /// for item in 0..100 {
+    ///     sk.insert(item);
+    /// }
+    ///
+    /// let desired_range = sk.range_with(|&ele| {
+    ///     if ele <= 5 {
+    ///         RangeHint::SmallerThanRange
+    ///     } else if ele <= 30 {
+    ///         RangeHint::InRange
+    ///     } else {
+    ///         RangeHint::LargerThanRange
+    ///     }
+    /// });
+    /// for item in desired_range {
+    ///     println!("{}", item); // First prints 6, then 7, ... and finally 30.
+    /// }
+    /// ```
     #[inline]
     pub fn range_with<F>(&self, inclusive_fn: F) -> IterRangeWith<T, F>
     where
@@ -209,8 +306,26 @@ impl<T: PartialOrd + Clone> SkipList<T> {
         IterRangeWith::new(unsafe { self.top_left.as_ref() }, inclusive_fn)
     }
 
+    /// Test if `item` is in the skiplist. Returns `true` if it's in the skiplist,
+    /// `false` otherwise.
+    ///
+    /// Runs in `O(logn)` time
+    ///
+    /// # Arguments
+    ///
+    /// * `item` - the item we're testing.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use convenient_skiplist::SkipList;
+    /// let mut sk = SkipList::new();
+    /// sk.insert(0u32);
+    ///
+    /// assert!(sk.contains(&0));
+    /// ```
     #[inline]
-    pub fn contains(&mut self, item: &T) -> bool {
+    pub fn contains(&self, item: &T) -> bool {
         unsafe {
             let last_ptr = self.iter_left(item).last().unwrap();
             if let Some(right) = &(*last_ptr).right {
@@ -219,6 +334,43 @@ impl<T: PartialOrd + Clone> SkipList<T> {
                 false
             }
         }
+    }
+
+    /// Remove `item` from the SkipList.
+    ///
+    /// Returns `true` if the item was in the collection to be removed,
+    /// and `false` otherwise. Runs in `O(logn)` time.
+    ///
+    /// # Arguments
+    ///
+    /// * `item` - the item to remove.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use convenient_skiplist::SkipList;
+    /// let mut sk = SkipList::new();
+    /// sk.insert(0u32);
+    ///
+    /// let removed = sk.remove(&0);
+    /// assert!(removed);
+    /// ```
+    pub fn remove(&mut self, item: &T) -> bool {
+        let mut actually_removed_node = false;
+        for node in self.iter_left(item) {
+            unsafe {
+                // Invariant: `node` can never be PosInf
+                let right = (*node).right.unwrap();
+                if &right.as_ref().value != item {
+                    continue;
+                }
+                // So the node right of us needs to be removed.
+                actually_removed_node = true;
+                let garbage = std::mem::replace(&mut (*node).right, right.as_ref().right);
+                drop(garbage);
+            }
+        }
+        actually_removed_node
     }
 
     #[inline]
@@ -308,14 +460,32 @@ impl<T: PartialOrd + Clone> SkipList<T> {
         self.ensure_columns_same_value();
     }
 
-    pub fn insert(&mut self, item: T) {
+    /// Insert `item` into the SkipList.
+    ///
+    /// Returns `true` if the item was actually inserted (i.e. wasn't already in the skiplist)
+    /// and `false` otherwise. Runs in `O(logn)` time.
+    ///
+    /// # Arguments
+    ///
+    /// * `item` - the item to insert.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use convenient_skiplist::SkipList;
+    /// let mut sk = SkipList::new();
+    /// sk.insert(0u32);
+    ///
+    /// assert!(sk.contains(&0));
+    /// ```
+    pub fn insert(&mut self, item: T) -> bool {
         #[cfg(debug_assertions)]
         {
             self.ensure_invariants()
         }
 
         if self.contains(&item) {
-            return;
+            return false;
         }
         let height = get_level();
         let additional_height_req: i32 = (height as i32 - self.height as i32) + 1;
@@ -347,6 +517,7 @@ impl<T: PartialOrd + Clone> SkipList<T> {
         {
             self.ensure_invariants()
         }
+        true
     }
 }
 
@@ -364,6 +535,22 @@ mod tests {
         }
         #[cfg(debug_assertions)]
         sl.ensure_invariants();
+    }
+
+    #[test]
+    fn test_remove() {
+        let mut sl = SkipList::new();
+        sl.insert(0u32);
+        assert!(sl.remove(&0));
+        assert!(!sl.remove(&0));
+        assert!(!sl.contains(&0));
+        sl.insert(0);
+        sl.insert(1);
+        sl.insert(2);
+        assert!(sl.remove(&1));
+        assert!(!sl.contains(&1));
+        sl.remove(&2);
+        assert!(!sl.contains(&2));
     }
 
     #[test]
@@ -400,7 +587,4 @@ mod tests {
             assert!(v.contains(expected_value));
         }
     }
-
-    #[test]
-    fn random_inclusive_range() {}
 }

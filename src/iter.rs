@@ -1,4 +1,4 @@
-use crate::{Node, NodeValue};
+use crate::{Node, NodeValue, RangeHint};
 
 /// IterAll is a iterator struct to iterate over the entire
 /// linked list.
@@ -23,6 +23,7 @@ impl<'a, T> IterAll<'a, T> {
 
 impl<'a, T: PartialOrd> Iterator for IterAll<'a, T> {
     type Item = &'a T;
+    #[inline]
     fn next(&mut self) -> Option<Self::Item> {
         if self.finished {
             return None;
@@ -78,6 +79,7 @@ impl<'a, T> SkipListRange<'a, T> {
 
 impl<'a, T: PartialOrd> Iterator for SkipListRange<'a, T> {
     type Item = &'a T;
+    #[inline]
     fn next(&mut self) -> Option<Self::Item> {
         // Step 1: Find the first node >= self.start
         while &self.curr_node.value < self.start {
@@ -144,6 +146,7 @@ impl<'a, T> LeftBiasIter<'a, T> {
 
 impl<'a, T: PartialOrd> Iterator for LeftBiasIter<'a, T> {
     type Item = *mut Node<T>;
+    #[inline]
     fn next(&mut self) -> Option<Self::Item> {
         if self.finished {
             return None;
@@ -181,19 +184,6 @@ impl<'a, T: PartialOrd> Iterator for LeftBiasIter<'a, T> {
             }
         }
     }
-}
-
-/// Hint that the current value `item` is:
-/// - Smaller (outside) than the desired
-/// - Inside the desired range
-/// - Larger (outside) the desired range
-///
-/// Used with IterRangeWith, or `range_with`
-#[derive(Debug)]
-pub enum RangeHint {
-    SmallerThanRange,
-    InRange,
-    LargerThanRange,
 }
 
 pub struct IterRangeWith<'a, T, F>
@@ -236,6 +226,7 @@ where
         }
     }
 
+    // Is `item` in our range?
     #[inline]
     fn item_in_range(&self, item: &NodeValue<T>) -> bool {
         match item {
@@ -258,6 +249,7 @@ where
     F: Fn(&T) -> RangeHint,
 {
     type Item = &'a T;
+    #[inline]
     fn next(&mut self) -> Option<Self::Item> {
         // Step 1: Find the *largest* element smaller than our range.
         // This process is _very_ similar to LeftBiasIter, where
@@ -443,7 +435,7 @@ mod tests {
     // You should run this test with miri
     #[test]
     fn test_range_pathological_no_panic() {
-        use crate::iter::RangeHint;
+        use crate::RangeHint;
         use rand;
         use rand::prelude::*;
         let mut sk = SkipList::<u32>::new();
