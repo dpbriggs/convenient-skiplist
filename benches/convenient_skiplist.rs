@@ -1,4 +1,4 @@
-use convenient_skiplist::{iter::RangeHint, SkipList};
+use convenient_skiplist::{RangeHint, SkipList};
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 
 fn iter_all_bench(c: &mut Criterion) {
@@ -68,30 +68,6 @@ fn bench_insert_linear_500(c: &mut Criterion) {
     });
 }
 
-fn bench_insert_linear_5000(c: &mut Criterion) {
-    c.bench_function("insert_5000", |b| {
-        b.iter(|| {
-            let mut sk = SkipList::<u32>::new();
-            let upper = 5000;
-            for i in 0..upper {
-                black_box(sk.insert(i));
-            }
-        })
-    });
-}
-
-fn bench_insert_linear_50000(c: &mut Criterion) {
-    c.bench_function("insert_50000", |b| {
-        b.iter(|| {
-            let mut sk = SkipList::<u32>::new();
-            let upper = 50000;
-            for i in 0..upper {
-                black_box(sk.insert(i));
-            }
-        })
-    });
-}
-
 fn bench_contains_500(c: &mut Criterion) {
     let mut sk = SkipList::<u32>::new();
     let upper = 500;
@@ -150,8 +126,6 @@ criterion_group!(
     iter_range_bench,
     iter_range_with_bench,
     bench_insert_linear_500,
-    bench_insert_linear_5000,
-    bench_insert_linear_50000,
     bench_contains_500,
     bench_contains_5000,
     bench_contains_50000,

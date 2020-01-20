@@ -2,7 +2,17 @@
 
 A performant and convenient skiplist, with advanced range queries and serde support.
 
-Still under construction.
+To add this to your project, simply add the below to your Cargo.toml:
+
+```
+convenient_skiplist = "0.1.0"
+```
+
+Or if you want `serde` support:
+
+```
+convenient_skiplist = { "version" = "0.1.0", features = ["serde_support"] } 
+```
 
 ## Simple Example
 

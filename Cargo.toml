@@ -10,18 +10,25 @@ categories = ["data-structures"]
 documentation = ""
 readme = "README.md"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
-[dependencies]
-rand = "0.7.3"
-
-[[bin]]
-name = "test"
-path = "src/main.rs"
+maintenance = { status = "actively-developed" }
 
 [dev-dependencies]
 criterion = "0.3"
 checkers = "0.5.2"
+serde_json = "1.0.44"
 
 [[bench]]
 name = "convenient_skiplist"
 harness = false
+
+[features]
+# The default set of optional packages. Most people will want to use these
+# packages, but they are strictly optional. Note that `session` is not a package
+# but rather another feature listed in this manifest.
+default = []
+
+serde_support = ["serde"]
+
+[dependencies]
+rand = "0.7.3"
+serde = { version = "1.0.104", optional = true }

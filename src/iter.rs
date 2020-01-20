@@ -307,14 +307,17 @@ mod tests {
     #[test]
     fn test_iterall() {
         let mut sk = SkipList::new();
-        let expected = &[0, 1, 2];
-        for e in expected {
+        let expected: Vec<u32> = (0..10).collect();
+        for e in &expected {
             sk.insert(*e);
         }
         let foo: Vec<_> = sk.iter_all().cloned().collect();
-        for i in 0..3 {
+        for i in 0..expected.len() {
             assert_eq!(expected[i], foo[i]);
         }
+        let mut second = foo.clone();
+        second.sort();
+        assert_eq!(foo, second)
     }
 
     #[test]
@@ -397,7 +400,8 @@ mod tests {
             })
             .cloned()
             .collect();
-        assert_eq!(f, vec![]);
+        let expected: Vec<u32> = vec![];
+        assert_eq!(f, expected);
     }
 
     #[test]
@@ -424,12 +428,14 @@ mod tests {
             .range_with(|&_i| RangeHint::SmallerThanRange)
             .cloned()
             .collect();
-        assert_eq!(f, vec![]);
+        // compiler bug? Should not need to specify type
+        let expected: Vec<u32> = Vec::new();
+        assert_eq!(f, expected);
         let f: Vec<_> = sk
             .range_with(|&_i| RangeHint::LargerThanRange)
             .cloned()
             .collect();
-        assert_eq!(f, vec![]);
+        assert_eq!(f, expected);
     }
 
     // You should run this test with miri

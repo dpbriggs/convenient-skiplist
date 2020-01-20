@@ -6,6 +6,9 @@ use std::fmt;
 use std::ptr::NonNull;
 pub mod iter;
 
+#[cfg(feature = "serde_support")]
+mod serde;
+
 #[derive(PartialEq, Debug)]
 enum NodeValue<T> {
     NegInf,
@@ -126,6 +129,22 @@ impl<T> Drop for SkipList<T> {
                 }
             }
         }
+    }
+}
+
+impl<T: PartialOrd + Clone> From<Vec<T>> for SkipList<T> {
+    fn from(coll: Vec<T>) -> SkipList<T> {
+        let mut sk = SkipList::new();
+        for item in coll.into_iter() {
+            sk.insert(item);
+        }
+        sk
+    }
+}
+
+impl<T: PartialOrd + Clone> PartialEq for SkipList<T> {
+    fn eq(&self, other: &Self) -> bool {
+        self.iter_all().zip(other.iter_all()).all(|(l, r)| l == r)
     }
 }
 
@@ -564,26 +583,20 @@ mod tests {
         let lower = 3;
         let upper = 30;
         let v: HashSet<i32> = sl.range(&lower, &upper).cloned().collect();
-        dbg!(&v);
         for expected_value in values.iter().filter(|&&i| lower <= i && i <= upper) {
-            dbg!(&expected_value);
             assert!(v.contains(expected_value));
         }
         let right_empty: HashSet<i32> = sl.range(&100, &1000).cloned().collect();
-        dbg!(&right_empty);
         assert!(right_empty.is_empty());
 
         let left_empty: HashSet<i32> = sl.range(&-2, &-1).cloned().collect();
-        dbg!(&left_empty);
         assert!(left_empty.is_empty());
 
         // Excessive range
         let lower = -10;
         let upper = 1000;
         let v: HashSet<i32> = sl.range(&lower, &upper).cloned().collect();
-        dbg!(&v);
         for expected_value in values.iter().filter(|&&i| lower <= i && i <= upper) {
-            dbg!(&expected_value);
             assert!(v.contains(expected_value));
         }
     }
