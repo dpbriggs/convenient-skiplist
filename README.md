@@ -112,9 +112,12 @@ for i in sk.range_with(my_range_fn) {
 - Skiplists have an expected space complexity of ~`2n`.
 - `SkipList::insert` - O(logn) time | ~O(1) space
 - `Skiplist::contains` - O(logn) time
+- `Skiplist::remove` - O(logn) time
 - `Skiplist::iter_all` - O(n) time | O(1) space (iterator yields a single element at a time)
 - `Skiplist::range` - O(logn + k), where k is width of range | O(1) space (iterator yields a single element at a time)
 - `Skiplist::range_with` - O(logn + k), where k is width of range | O(1) space (iterator yields a single element at a time)
+- `PartialEq<SkipList>` - O(n) time; compare if two skiplists have the same elements
+- `From<Vec<T>>` - O(nlogn) time; generating a skiplist from a vec of items
 
 ## Data Structure Description
 
@@ -132,7 +135,7 @@ you can advance right like a normal linked list.
 An example of a skiplist:
 
 <p align="center">
-  <img width="460" height="300" src="https://upload.wikimedia.org/wikipedia/commons/8/86/Skip_list.svg">
+  <img src="https://upload.wikimedia.org/wikipedia/commons/8/86/Skip_list.svg">
 </p>
 
 
