@@ -65,6 +65,7 @@ pub struct SkipListRange<'a, T> {
     curr_node: &'a Node<T>,
     start: &'a T,
     end: &'a T,
+    at_bottom: bool,
 }
 
 impl<'a, T> SkipListRange<'a, T> {
@@ -73,6 +74,7 @@ impl<'a, T> SkipListRange<'a, T> {
             curr_node,
             start,
             end,
+            at_bottom: false,
         }
     }
 }
@@ -82,7 +84,7 @@ impl<'a, T: PartialOrd> Iterator for SkipListRange<'a, T> {
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
         // Step 1: Find the first node >= self.start
-        while &self.curr_node.value < self.start {
+        while !self.at_bottom {
             match (self.curr_node.right, self.curr_node.down) {
                 (Some(right), Some(down)) => unsafe {
                     if &right.as_ref().value < self.start {
@@ -94,33 +96,42 @@ impl<'a, T: PartialOrd> Iterator for SkipListRange<'a, T> {
                 (Some(right), None) => unsafe {
                     if &right.as_ref().value < self.start {
                         self.curr_node = right.as_ptr().as_ref().unwrap();
-                    } else if &right.as_ref().value > self.end {
-                        return None;
                     } else {
-                        break; // ?
+                        self.at_bottom = true;
+                        self.curr_node = self.curr_node.right.unwrap().as_ptr().as_ref().unwrap();
+                        break;
                     }
                 },
                 _ => unreachable!(),
             }
         }
-        // Now, head to the bottom.
-        while let Some(down) = self.curr_node.down {
+        // Verify that we are, indeed, at the bottom
+        debug_assert!(self.curr_node.down.is_none());
+        if &self.curr_node.value <= self.end {
             unsafe {
-                self.curr_node = down.as_ptr().as_ref().unwrap();
-            }
-        }
-        // curr_node is now >= self.start
-        while &self.curr_node.value <= self.end {
-            unsafe {
+                let ret_val = &self.curr_node.value;
                 let next = self.curr_node.right.unwrap().as_ptr().as_ref().unwrap();
-                let curr_value = std::mem::replace(&mut self.curr_node, next);
-                match &curr_value.value {
-                    NodeValue::Value(v) => return Some(v),
-                    _ => continue,
-                }
+                self.curr_node = next;
+                return Some(ret_val.get_value());
             }
         }
         None
+        // // We are a single element left of the start of the range, so go right
+        // // curr_node is now >= self.start
+        // if &self.curr_node.value <= self.end {
+
+        // }
+        // while &self.curr_node.value <= self.end {
+        //     unsafe {
+        //         let next = self.curr_node.right.unwrap().as_ptr().as_ref().unwrap();
+        //         let curr_value = std::mem::replace(&mut self.curr_node, next);
+        //         match &curr_value.value {
+        //             NodeValue::Value(v) => return Some(v),
+        //             _ => continue,
+        //         }
+        //     }
+        // }
+        // None
     }
 }
 
@@ -319,12 +330,43 @@ mod tests {
         second.sort();
         assert_eq!(foo, second)
     }
-
     #[test]
     fn test_empty() {
         let sk = SkipList::<u32>::new();
         let foo: Vec<_> = sk.iter_all().cloned().collect();
         assert!(foo.is_empty());
+    }
+
+    #[test]
+    fn test_range() {
+        let mut sk = SkipList::new();
+        for i in 0..500 {
+            sk.insert(i);
+        }
+        let expected: Vec<u32> = (50..=100).collect();
+        let got: Vec<u32> = sk.range(&50, &100).cloned().collect();
+        assert_eq!(expected, got);
+    }
+
+    #[test]
+    fn test_range_empty() {
+        let mut sk = SkipList::new();
+        let expected: Vec<u32> = Vec::new();
+        let got: Vec<u32> = sk.range(&50, &100).cloned().collect();
+        assert_eq!(expected, got);
+    }
+
+    #[test]
+    fn test_range_outside() {
+        let mut sk = SkipList::new();
+        for i in 20..30 {
+            sk.insert(i);
+        }
+        let expected: Vec<u32> = Vec::new();
+        let less: Vec<u32> = sk.range(&0, &19).cloned().collect();
+        let more: Vec<u32> = sk.range(&30, &32).cloned().collect();
+        assert_eq!(expected, less);
+        assert_eq!(expected, more);
     }
 
     #[test]
