@@ -1,13 +1,13 @@
 [package]
 name = "convenient-skiplist"
-version = "0.2.0"
+version = "0.2.1"
 authors = ["David Briggs <david@dpbriggs.ca>"]
 edition = "2018"
 license = "GPL-3.0-or-later"
 repository = "https://github.com/dpbriggs/convenient-skiplist"
 keywords = ["skiplist", "serde", "advanced", "performant", "convenient"]
 categories = ["data-structures"]
-documentation = "https://docs.rs/convenient-skiplist/latest/convenient_skiplist/struct.SkipList"
+documentation = "https://docs.rs/convenient-skiplist/latest/convenient_skiplist/struct.SkipList.html"
 readme = "README.md"
 description = "Convenient and Performant SkipList with serde support"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html

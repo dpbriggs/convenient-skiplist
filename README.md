@@ -31,6 +31,7 @@ fn main() {
     // You can check if the skiplist contains an element, O(log(n))
     assert!(sk.contains(&0));
     assert!(!sk.contains(&10));
+    assert!(sk.remove(&0)); // remove is also O(log(n))
 }
 ```
 

@@ -98,9 +98,29 @@ pub enum RangeHint {
     LargerThanRange,
 }
 
+/// SkipLists are fast probabilistic data-structures that feature logarithmic time complexity for inserting elements,
+/// testing element association, removing elements, and finding ranges of elements.
+///
+/// ```rust
+/// use convenient_skiplist::SkipList;
+///
+/// // Make a new skiplist
+/// let mut sk = SkipList::new();
+/// for i in 0..5u32 {
+///     // Inserts are O(log(n)) on average
+///     sk.insert(i);
+/// }
+/// // You can print the skiplist!
+/// dbg!(&sk);
+/// // You can check if the skiplist contains an element, O(log(n))
+/// assert!(sk.contains(&0));
+/// assert!(!sk.contains(&10));
+/// assert!(sk.remove(&0)); // remove is also O(log(n))
+/// ```
 pub struct SkipList<T> {
     top_left: NonNull<Node<T>>,
     height: u32,
+    _prevent_sync_send: std::marker::PhantomData<*const ()>,
 }
 
 impl<T> Drop for SkipList<T> {
@@ -181,6 +201,7 @@ impl<T: PartialOrd + Clone> Default for SkipList<T> {
 }
 
 /// Get the level of an item in the skiplist
+#[inline]
 fn get_level() -> u32 {
     let mut height = 1;
     let mut rng = rand::thread_rng();
@@ -206,6 +227,7 @@ impl<T: PartialOrd + Clone> SkipList<T> {
         let mut sk = SkipList {
             top_left: SkipList::pos_neg_pair(),
             height: 1,
+            _prevent_sync_send: std::marker::PhantomData,
         };
         sk.add_levels(2);
         sk
@@ -229,15 +251,14 @@ impl<T: PartialOrd + Clone> SkipList<T> {
         }
         self.height += additional_levels as u32;
     }
-
-    #[inline]
-    fn iter_left<'a>(&'a self, item: &'a T) -> LeftBiasIter<'a, T> {
-        LeftBiasIter::new(self.top_left.as_ptr(), item)
-    }
-
-    /// Iterator over all elements in the Skiplist.
+    /// Insert `item` into the SkipList.
     ///
-    /// This runs in O(n) time.
+    /// Returns `true` if the item was actually inserted (i.e. wasn't already in the skiplist)
+    /// and `false` otherwise. Runs in `O(logn)` time.
+    ///
+    /// # Arguments
+    ///
+    /// * `item` - the item to insert.
     ///
     /// # Example
     ///
@@ -245,86 +266,51 @@ impl<T: PartialOrd + Clone> SkipList<T> {
     /// use convenient_skiplist::SkipList;
     /// let mut sk = SkipList::new();
     /// sk.insert(0u32);
-    /// sk.insert(1u32);
-    /// sk.insert(2u32);
-    /// for item in sk.iter_all() {
-    ///     println!("{:?}", item);
-    /// }
+    ///
+    /// assert!(sk.contains(&0));
     /// ```
-    #[inline]
-    pub fn iter_all(&self) -> IterAll<T> {
-        unsafe { IterAll::new(self.top_left.as_ref()) }
-    }
 
-    /// Iterator over an inclusive range of elements in the SkipList.
-    ///
-    /// This runs in O(logn + k), where k is the width of range.
-    ///
-    /// # Example
-    ///
-    /// ```rust
-    /// use convenient_skiplist::SkipList;
-    /// let mut sk = SkipList::new();
-    /// for item in 0..100 {
-    ///     sk.insert(item);
-    /// }
-    ///
-    /// for item in sk.range(&20, &40) {
-    ///     println!("{}", item); // First prints 20, then 21, ... and finally 40.
-    /// }
-    /// ```
-    #[inline]
-    pub fn range<'a>(&'a self, start: &'a T, end: &'a T) -> SkipListRange<'a, T> {
-        SkipListRange::new(unsafe { self.top_left.as_ref() }, start, end)
-    }
+    pub fn insert(&mut self, item: T) -> bool {
+        #[cfg(debug_assertions)]
+        {
+            self.ensure_invariants()
+        }
 
-    /// Iterator over an inclusive range of elements in the SkipList,
-    /// as defined by the `inclusive_fn`.
-    /// This runs in O(logn + k), where k is the width of range.
-    ///
-    /// As the skiplist is ordered in an ascending way, `inclusive_fn` should be
-    /// structured with the idea in mind that you're going to see the smallest elements
-    /// first. `inclusive_fn` should be designed to extract a *single contiguous
-    /// stretch of elements*.
-    ///
-    /// This iterator will find the smallest element in the range,
-    /// and then return elements until it finds the first element
-    /// larger than the range.
-    ///
-    /// If multiple ranges are desired, you can use `range_with` multiple times,
-    /// and simply use the last element of the previous run as the start of
-    /// the next run.
-    ///
-    /// # Example
-    ///
-    /// ```rust
-    /// use convenient_skiplist::{RangeHint, SkipList};
-    /// let mut sk = SkipList::new();
-    /// for item in 0..100 {
-    ///     sk.insert(item);
-    /// }
-    ///
-    /// let desired_range = sk.range_with(|&ele| {
-    ///     if ele <= 5 {
-    ///         RangeHint::SmallerThanRange
-    ///     } else if ele <= 30 {
-    ///         RangeHint::InRange
-    ///     } else {
-    ///         RangeHint::LargerThanRange
-    ///     }
-    /// });
-    /// for item in desired_range {
-    ///     println!("{}", item); // First prints 6, then 7, ... and finally 30.
-    /// }
-    /// ```
-    #[inline]
-    pub fn range_with<F>(&self, inclusive_fn: F) -> IterRangeWith<T, F>
-    where
-        F: Fn(&T) -> RangeHint,
-    {
-        IterRangeWith::new(unsafe { self.top_left.as_ref() }, inclusive_fn)
-    }
+        if self.contains(&item) {
+            return false;
+        }
+        let height = get_level();
+        let additional_height_req: i32 = (height as i32 - self.height as i32) + 1;
+        if additional_height_req > 0 {
+            self.add_levels(additional_height_req as usize);
+            debug_assert!(self.height > height);
+        }
+        #[cfg(debug_assertions)]
+        {
+            self.ensure_invariants()
+        }
 
+        // Now the skiplist has enough height to actually insert this element.
+        // We'll need to reverse iterate to stitch the required items between.
+        // As self.path_to returns all nodes immediately *left* of where we've inserted,
+        // we just need to insert the nodes after.
+        let mut node_below_me = None;
+        for node in self.path_to(&item).into_iter().rev().take(height as usize) {
+            let mut new_node = SkipList::make_node(item.clone());
+            let node: *mut Node<T> = node;
+            unsafe {
+                new_node.as_mut().down = node_below_me;
+                new_node.as_mut().right = (*node).right;
+                (*node).right = Some(new_node);
+                node_below_me = Some(new_node);
+            }
+        }
+        #[cfg(debug_assertions)]
+        {
+            self.ensure_invariants()
+        }
+        true
+    }
     /// Test if `item` is in the skiplist. Returns `true` if it's in the skiplist,
     /// `false` otherwise.
     ///
@@ -390,6 +376,101 @@ impl<T: PartialOrd + Clone> SkipList<T> {
             }
         }
         actually_removed_node
+    }
+
+    #[inline]
+    fn iter_left<'a>(&'a self, item: &'a T) -> LeftBiasIter<'a, T> {
+        LeftBiasIter::new(self.top_left.as_ptr(), item)
+    }
+
+    /// Iterator over all elements in the Skiplist.
+    ///
+    /// This runs in `O(n)` time.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use convenient_skiplist::SkipList;
+    /// let mut sk = SkipList::new();
+    /// sk.insert(0u32);
+    /// sk.insert(1u32);
+    /// sk.insert(2u32);
+    /// for item in sk.iter_all() {
+    ///     println!("{:?}", item);
+    /// }
+    /// ```
+    #[inline]
+    pub fn iter_all(&self) -> IterAll<T> {
+        unsafe { IterAll::new(self.top_left.as_ref()) }
+    }
+
+    /// Iterator over an inclusive range of elements in the SkipList.
+    ///
+    /// This runs in `O(logn + k)`, where k is the width of range.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use convenient_skiplist::SkipList;
+    /// let mut sk = SkipList::new();
+    /// for item in 0..100 {
+    ///     sk.insert(item);
+    /// }
+    ///
+    /// for item in sk.range(&20, &40) {
+    ///     println!("{}", item); // First prints 20, then 21, ... and finally 40.
+    /// }
+    /// ```
+    #[inline]
+    pub fn range<'a>(&'a self, start: &'a T, end: &'a T) -> SkipListRange<'a, T> {
+        SkipListRange::new(unsafe { self.top_left.as_ref() }, start, end)
+    }
+
+    /// Iterator over an inclusive range of elements in the SkipList,
+    /// as defined by the `inclusive_fn`.
+    /// This runs in `O(logn + k)`, where k is the width of range.
+    ///
+    /// As the skiplist is ordered in an ascending way, `inclusive_fn` should be
+    /// structured with the idea in mind that you're going to see the smallest elements
+    /// first. `inclusive_fn` should be designed to extract a *single contiguous
+    /// stretch of elements*.
+    ///
+    /// This iterator will find the smallest element in the range,
+    /// and then return elements until it finds the first element
+    /// larger than the range.
+    ///
+    /// If multiple ranges are desired, you can use `range_with` multiple times,
+    /// and simply use the last element of the previous run as the start of
+    /// the next run.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use convenient_skiplist::{RangeHint, SkipList};
+    /// let mut sk = SkipList::new();
+    /// for item in 0..100 {
+    ///     sk.insert(item);
+    /// }
+    ///
+    /// let desired_range = sk.range_with(|&ele| {
+    ///     if ele <= 5 {
+    ///         RangeHint::SmallerThanRange
+    ///     } else if ele <= 30 {
+    ///         RangeHint::InRange
+    ///     } else {
+    ///         RangeHint::LargerThanRange
+    ///     }
+    /// });
+    /// for item in desired_range {
+    ///     println!("{}", item); // First prints 6, then 7, ... and finally 30.
+    /// }
+    /// ```
+    #[inline]
+    pub fn range_with<F>(&self, inclusive_fn: F) -> IterRangeWith<T, F>
+    where
+        F: Fn(&T) -> RangeHint,
+    {
+        IterRangeWith::new(unsafe { self.top_left.as_ref() }, inclusive_fn)
     }
 
     #[inline]
@@ -477,66 +558,6 @@ impl<T: PartialOrd + Clone> SkipList<T> {
         }
         self.ensure_rows_ordered();
         self.ensure_columns_same_value();
-    }
-
-    /// Insert `item` into the SkipList.
-    ///
-    /// Returns `true` if the item was actually inserted (i.e. wasn't already in the skiplist)
-    /// and `false` otherwise. Runs in `O(logn)` time.
-    ///
-    /// # Arguments
-    ///
-    /// * `item` - the item to insert.
-    ///
-    /// # Example
-    ///
-    /// ```rust
-    /// use convenient_skiplist::SkipList;
-    /// let mut sk = SkipList::new();
-    /// sk.insert(0u32);
-    ///
-    /// assert!(sk.contains(&0));
-    /// ```
-    pub fn insert(&mut self, item: T) -> bool {
-        #[cfg(debug_assertions)]
-        {
-            self.ensure_invariants()
-        }
-
-        if self.contains(&item) {
-            return false;
-        }
-        let height = get_level();
-        let additional_height_req: i32 = (height as i32 - self.height as i32) + 1;
-        if additional_height_req > 0 {
-            self.add_levels(additional_height_req as usize);
-            debug_assert!(self.height > height);
-        }
-        #[cfg(debug_assertions)]
-        {
-            self.ensure_invariants()
-        }
-
-        // Now the skiplist has enough height to actually insert this element.
-        // We'll need to reverse iterate to stitch the required items between.
-        // As self.path_to returns all nodes immediately *left* of where we've inserted,
-        // we just need to insert the nodes after.
-        let mut node_below_me = None;
-        for node in self.path_to(&item).into_iter().rev().take(height as usize) {
-            let mut new_node = SkipList::make_node(item.clone());
-            let node: *mut Node<T> = node;
-            unsafe {
-                new_node.as_mut().down = node_below_me;
-                new_node.as_mut().right = (*node).right;
-                (*node).right = Some(new_node);
-                node_below_me = Some(new_node);
-            }
-        }
-        #[cfg(debug_assertions)]
-        {
-            self.ensure_invariants()
-        }
-        true
     }
 }
 
