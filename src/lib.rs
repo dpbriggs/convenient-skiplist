@@ -3,6 +3,7 @@ use rand;
 use rand::prelude::*;
 use std::cmp::{Ordering, PartialOrd};
 use std::fmt;
+use std::iter::FromIterator;
 use std::ptr::NonNull;
 pub mod iter;
 
@@ -98,7 +99,7 @@ pub enum RangeHint {
     LargerThanRange,
 }
 
-/// SkipLists are fast probabilistic data-structures that feature logarithmic time complexity for inserting elements,
+/// `SkipLists` are fast probabilistic data-structures that feature logarithmic time complexity for inserting elements,
 /// testing element association, removing elements, and finding ranges of elements.
 ///
 /// ```rust
@@ -116,12 +117,18 @@ pub enum RangeHint {
 /// assert!(sk.contains(&0));
 /// assert!(!sk.contains(&10));
 /// assert!(sk.remove(&0)); // remove is also O(log(n))
+/// assert!(sk == sk); // equality checking is O(n)
+/// let from_vec = SkipList::from(vec![1u32, 2, 3]); // From<Vec<T>> is O(n)
+/// assert_eq!(vec![1, 2, 3], from_vec.iter_all().cloned().collect::<Vec<u32>>());
 /// ```
 pub struct SkipList<T> {
     top_left: NonNull<Node<T>>,
     height: u32,
+    len: usize,
     _prevent_sync_send: std::marker::PhantomData<*const ()>,
 }
+
+// TODO: FromIterator
 
 impl<T> Drop for SkipList<T> {
     fn drop(&mut self) {
@@ -152,19 +159,25 @@ impl<T> Drop for SkipList<T> {
     }
 }
 
-impl<T: PartialOrd + Clone> From<Vec<T>> for SkipList<T> {
-    fn from(coll: Vec<T>) -> SkipList<T> {
+impl<T: PartialOrd + Clone> FromIterator<T> for SkipList<T> {
+    fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> SkipList<T> {
         let mut sk = SkipList::new();
-        for item in coll.into_iter() {
+        for item in iter {
             sk.insert(item);
         }
         sk
     }
 }
 
+impl<T: PartialOrd + Clone, I: IntoIterator<Item = T>> From<I> for SkipList<T> {
+    fn from(iter: I) -> Self {
+        iter.into_iter().collect()
+    }
+}
+
 impl<T: PartialOrd + Clone> PartialEq for SkipList<T> {
     fn eq(&self, other: &Self) -> bool {
-        self.iter_all().zip(other.iter_all()).all(|(l, r)| l == r)
+        self.len() == other.len() && self.iter_all().zip(other.iter_all()).all(|(l, r)| l == r)
     }
 }
 
@@ -195,6 +208,7 @@ impl<T: fmt::Debug> fmt::Debug for SkipList<T> {
 }
 
 impl<T: PartialOrd + Clone> Default for SkipList<T> {
+    #[inline]
     fn default() -> Self {
         Self::new()
     }
@@ -223,16 +237,19 @@ impl<T: PartialOrd + Clone> SkipList<T> {
     ///
     /// assert!(sk.contains(&0));
     /// ```
+    #[inline]
     pub fn new() -> SkipList<T> {
         let mut sk = SkipList {
             top_left: SkipList::pos_neg_pair(),
             height: 1,
+            len: 0,
             _prevent_sync_send: std::marker::PhantomData,
         };
         sk.add_levels(2);
         sk
     }
 
+    /// add `additional_levels` to the _top_ of the SkipList
     #[inline]
     fn add_levels(&mut self, additional_levels: usize) {
         let mut curr_level = self.top_left;
@@ -251,7 +268,7 @@ impl<T: PartialOrd + Clone> SkipList<T> {
         }
         self.height += additional_levels as u32;
     }
-    /// Insert `item` into the SkipList.
+    /// Insert `item` into the `SkipList`.
     ///
     /// Returns `true` if the item was actually inserted (i.e. wasn't already in the skiplist)
     /// and `false` otherwise. Runs in `O(logn)` time.
@@ -269,7 +286,7 @@ impl<T: PartialOrd + Clone> SkipList<T> {
     ///
     /// assert!(sk.contains(&0));
     /// ```
-
+    #[inline]
     pub fn insert(&mut self, item: T) -> bool {
         #[cfg(debug_assertions)]
         {
@@ -309,6 +326,7 @@ impl<T: PartialOrd + Clone> SkipList<T> {
         {
             self.ensure_invariants()
         }
+        self.len += 1;
         true
     }
     /// Test if `item` is in the skiplist. Returns `true` if it's in the skiplist,
@@ -375,8 +393,35 @@ impl<T: PartialOrd + Clone> SkipList<T> {
                 drop(Box::from_raw(garbage.unwrap().as_ptr()));
             }
         }
+        if actually_removed_node {
+            self.len -= 1;
+        }
         actually_removed_node
     }
+
+    /// Return the number of elements in the skiplist.
+    #[inline]
+    pub fn len(&self) -> usize {
+        self.len
+    }
+
+    /// Returns true if the skiplist is empty
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.len == 0
+    }
+
+    // TODO
+    // fn remove_range<'a>(&'a mut self, _start: &'a T, _end: &'a T) -> usize {
+    //     // Idea: Use iter_left twice to determine the chunk in the middle to remove.
+    //     // Hardest part will be cleaning up garbage. :thinking:
+    //     todo!()
+    // }
+
+    // TODO
+    // fn rank(&self, _item: &T) -> usize {
+    //     todo!()
+    // }
 
     #[inline]
     fn iter_left<'a>(&'a self, item: &'a T) -> LeftBiasIter<'a, T> {
@@ -620,5 +665,54 @@ mod tests {
         for expected_value in values.iter().filter(|&&i| lower <= i && i <= upper) {
             assert!(v.contains(expected_value));
         }
+    }
+
+    #[test]
+    fn test_len() {
+        let mut sl = SkipList::new();
+        assert_eq!(sl.len(), 0);
+        assert!(sl.is_empty());
+        sl.insert(0);
+        assert_eq!(sl.len(), 1);
+        assert!(!sl.is_empty());
+        sl.insert(0);
+        assert_eq!(sl.len(), 1);
+        sl.insert(1);
+        assert_eq!(sl.len(), 2);
+        sl.remove(&1);
+        assert_eq!(sl.len(), 1);
+        sl.remove(&1);
+        assert_eq!(sl.len(), 1);
+        sl.remove(&0);
+        assert_eq!(sl.len(), 0);
+        sl.remove(&0);
+        assert_eq!(sl.len(), 0);
+    }
+
+    #[test]
+    fn test_eq() {
+        let mut s0 = SkipList::new();
+        let mut s1 = SkipList::new();
+        assert!(s0 == s1);
+        s0.insert(0);
+        assert!(s0 != s1);
+        s1.insert(1);
+        assert!(s0 != s1);
+        s0.insert(1);
+        s1.insert(0);
+        assert!(s0 == s1);
+        s0.insert(2);
+        s0.insert(3);
+        assert!(s0 != s1);
+    }
+
+    #[test]
+    fn test_from() {
+        let values = vec![1u32, 2, 3];
+        let sk = SkipList::from(values.clone());
+        assert_eq!(sk.iter_all().cloned().collect::<Vec<_>>(), values);
+        let values: Vec<u32> = (0..10).collect();
+        let sk = SkipList::from(0..10);
+        assert_eq!(sk.iter_all().cloned().collect::<Vec<_>>(), values);
     }
 }

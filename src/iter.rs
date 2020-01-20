@@ -47,7 +47,7 @@ impl<'a, T: PartialOrd> Iterator for IterAll<'a, T> {
                     self.curr_node = self.curr_node.right.unwrap().as_ptr().as_ref().unwrap();
                 }
                 NodeValue::PosInf => return None,
-                _ => {}
+                NodeValue::Value(..) => {}
             };
             if self.curr_node.right.unwrap().as_ref().value == NodeValue::PosInf {
                 self.finished = true;
@@ -350,7 +350,7 @@ mod tests {
 
     #[test]
     fn test_range_empty() {
-        let mut sk = SkipList::new();
+        let sk = SkipList::new();
         let expected: Vec<u32> = Vec::new();
         let got: Vec<u32> = sk.range(&50, &100).cloned().collect();
         assert_eq!(expected, got);
