@@ -386,7 +386,7 @@ impl<T: PartialOrd + Clone> SkipList<T> {
                 // So the node right of us needs to be removed.
                 actually_removed_node = true;
                 let garbage = std::mem::replace(&mut (*node).right, right.as_ref().right);
-                drop(garbage);
+                drop(Box::from_raw(garbage.unwrap().as_ptr()));
             }
         }
         actually_removed_node
