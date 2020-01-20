@@ -20,6 +20,7 @@ path = "src/main.rs"
 
 [dev-dependencies]
 criterion = "0.3"
+checkers = "0.5.2"
 
 [[bench]]
 name = "convenient_skiplist"
