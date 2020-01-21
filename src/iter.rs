@@ -1,4 +1,75 @@
-use crate::{Node, NodeValue, RangeHint};
+use crate::{Node, NodeValue, RangeHint, SkipList};
+
+/// Struct to keep track of things for IntoIterator
+/// *Warning*: As all nodes are heap allocated, we have
+/// to clone them to produce type T.
+pub struct IntoIter<T> {
+    _skiplist: SkipList<T>,
+    curr_node: *mut Node<T>,
+    finished: bool,
+}
+
+impl<T: Clone> Iterator for IntoIter<T> {
+    type Item = T;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.finished {
+            return None;
+        }
+        unsafe {
+            match (*self.curr_node).right {
+                Some(right) => {
+                    std::mem::replace(&mut self.curr_node, right.as_ptr());
+                    return Some((*self.curr_node).value.get_value().clone());
+                }
+                None => {
+                    self.finished = true;
+                    return Some((*self.curr_node).value.get_value().clone());
+                }
+            };
+        };
+    }
+}
+
+impl<T: PartialOrd + Clone> IntoIterator for SkipList<T> {
+    type Item = T;
+    type IntoIter = IntoIter<T>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        IntoIter {
+            curr_node: self.top_left.as_ptr(),
+            _skiplist: self,
+            finished: false,
+        }
+    }
+}
+// TODO: Drain
+// pub struct Drain<T> {
+//     curr_node: *mut Node<T>,
+//     finished: bool,
+// }
+
+// impl<T: Clone> Iterator for Drain<T> {
+//     type Item = T;
+//     fn next(&mut self) -> Option<Self::Item> {
+//         if self.finished {
+//             return None;
+//         }
+//         unsafe {
+//             match (*self.curr_node).right {
+//                 Some(right) => {
+//                     let ret = std::mem::replace(&mut self.curr_node, right.as_ptr());
+//                     let ret = Box::from_raw(ret);
+//                     return Some(ret.value.get_value().clone());
+//                 }
+//                 None => {
+//                     self.finished = true;
+//                     return Some(Box::from_raw(self.curr_node).value.get_value().clone());
+//                 }
+//             };
+//         };
+//     }
+// }
 
 /// IterAll is a iterator struct to iterate over the entire
 /// linked list.

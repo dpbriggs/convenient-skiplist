@@ -118,7 +118,7 @@ pub enum RangeHint {
 /// assert!(!sk.contains(&10));
 /// assert!(sk.remove(&0)); // remove is also O(log(n))
 /// assert!(sk == sk); // equality checking is O(n)
-/// let from_vec = SkipList::from(vec![1u32, 2, 3]); // From<Vec<T>> is O(n)
+/// let from_vec = SkipList::from(vec![1u32, 2, 3].into_iter()); // From<Vec<T>> is O(n)
 /// assert_eq!(vec![1, 2, 3], from_vec.iter_all().cloned().collect::<Vec<u32>>());
 /// ```
 pub struct SkipList<T> {
@@ -169,7 +169,7 @@ impl<T: PartialOrd + Clone> FromIterator<T> for SkipList<T> {
     }
 }
 
-impl<T: PartialOrd + Clone, I: IntoIterator<Item = T>> From<I> for SkipList<T> {
+impl<T: PartialOrd + Clone, I: Iterator<Item = T>> From<I> for SkipList<T> {
     fn from(iter: I) -> Self {
         iter.into_iter().collect()
     }
@@ -418,11 +418,6 @@ impl<T: PartialOrd + Clone> SkipList<T> {
     //     todo!()
     // }
 
-    // TODO
-    // fn rank(&self, _item: &T) -> usize {
-    //     todo!()
-    // }
-
     /// Find the index of `item` in the `SkipList`. Runs in `O(n)` time.
     ///
     /// # Arguments
@@ -447,6 +442,10 @@ impl<T: PartialOrd + Clone> SkipList<T> {
         self.iter_all().position(|ele| ele == item)
     }
 
+    /// Left-Biased iterator towards `item`.
+    ///
+    /// Returns all possible positions *left* where `item`
+    /// is or should be in the skiplist.
     #[inline]
     fn iter_left<'a>(&'a self, item: &'a T) -> LeftBiasIter<'a, T> {
         LeftBiasIter::new(self.top_left.as_ptr(), item)
@@ -733,7 +732,7 @@ mod tests {
     #[test]
     fn test_from() {
         let values = vec![1u32, 2, 3];
-        let sk = SkipList::from(values.clone());
+        let sk = SkipList::from(values.clone().into_iter());
         assert_eq!(sk.iter_all().cloned().collect::<Vec<_>>(), values);
         let values: Vec<u32> = (0..10).collect();
         let sk = SkipList::from(0..10);
