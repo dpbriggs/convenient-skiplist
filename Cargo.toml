@@ -1,6 +1,6 @@
 [package]
 name = "convenient-skiplist"
-version = "0.2.3"
+version = "0.2.4"
 authors = ["David Briggs <david@dpbriggs.ca>"]
 edition = "2018"
 license = "GPL-3.0-or-later"
@@ -11,7 +11,6 @@ documentation = "https://docs.rs/convenient-skiplist/latest/convenient_skiplist/
 readme = "README.md"
 description = "Convenient and Performant SkipList with serde support"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-maintenance = { status = "actively-developed" }
 
 [dev-dependencies]
 criterion = "0.3"

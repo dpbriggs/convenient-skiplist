@@ -5,13 +5,13 @@ A performant and convenient skiplist, with advanced range queries and serde supp
 To add this to your project, simply add the below to your Cargo.toml:
 
 ```
-convenient_skiplist = "*"
+convenient_skiplist = "0.2.4"
 ```
 
 Or if you want `serde` support:
 
 ```
-convenient_skiplist = { "version" = "*", features = ["serde_support"] } 
+convenient_skiplist = { "version" = "0.2.4", features = ["serde_support"] } 
 ```
 
 ## Simple Example
@@ -55,9 +55,30 @@ and inlined comparison functions. In debug mode there's several invariant checks
 You can construct a skiplist, and insert elements and check if they exist in the skiplist (`contains`);
 
 ```rust
-let sk = SkipList::new()
+// Create a new skiplist
+let mut sk = SkipList::new()
+
+// Insert an element
 sk.insert(0u32);
+
+// Verify that the element exists in the SkipList
 assert!(sk.contains(&0))
+
+// Remove an element from the skiplist:
+assert!(sk.remove(&0))
+
+// Check the length
+assert_eq!(sk.len(), 0)
+assert_eq!(sk.is_empty(), 0)
+
+// Find the index of an element
+sk.insert(1u32);
+sk.insert(2u32);
+sk.insert(3u32);
+
+assert_eq!(sk.index_of(&1), Some(0))
+assert_eq!(sk.index_of(&2), Some(1))
+assert_eq!(sk.index_of(&99), None)
 ```
 
 ### Iterators
@@ -138,6 +159,49 @@ An example of a skiplist:
 <p align="center">
   <img src="https://upload.wikimedia.org/wikipedia/commons/8/86/Skip_list.svg">
 </p>
+
+## More Advanced Example
+
+```rust
+use convenient_skiplist::{RangeHint, SkipList};
+use std::cmp::Ordering;
+
+#[derive(PartialEq, Debug, Clone)]
+struct MoreComplex {
+    pub score: f64,
+    pub data: String,
+}
+
+// We're going to sort the skiplist by the "score" field
+impl PartialOrd for MoreComplex {
+    fn partial_cmp(&self, other: &MoreComplex) -> Option<Ordering> {
+        self.score.partial_cmp(&other.score)
+    }
+}
+
+fn main() {
+    let mut sk = SkipList::new();
+    for i in 0..100 {
+        sk.insert(MoreComplex {
+            score: i as f64 / 100.0,
+            data: i.to_string(),
+        });
+    }
+    let range = sk.range_with(|ele| {
+        if ele.score <= 0.05 {
+            RangeHint::SmallerThanRange
+        } else if ele.score <= 0.55 {
+            RangeHint::InRange
+        } else {
+            RangeHint::LargerThanRange
+        }
+    });
+    for item in range {
+        println!("{:?}", item);
+    }
+}
+
+```
 
 
 ## Soundness

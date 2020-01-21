@@ -423,6 +423,30 @@ impl<T: PartialOrd + Clone> SkipList<T> {
     //     todo!()
     // }
 
+    /// Find the index of `item` in the `SkipList`. Runs in `O(n)` time.
+    ///
+    /// # Arguments
+    ///
+    /// * `item`: the item to find the position of.
+    ///
+    /// # Example
+    /// ```rust
+    /// use convenient_skiplist::SkipList;
+    /// let mut sk = SkipList::new();
+    /// sk.insert(1);
+    /// sk.insert(2);
+    /// sk.insert(3);
+    ///
+    /// assert_eq!(sk.index_of(&1), Some(0));
+    /// assert_eq!(sk.index_of(&2), Some(1));
+    /// assert_eq!(sk.index_of(&3), Some(2));
+    /// assert_eq!(sk.index_of(&999), None);
+    /// ```
+    #[inline]
+    pub fn index_of(&self, item: &T) -> Option<usize> {
+        self.iter_all().position(|ele| ele == item)
+    }
+
     #[inline]
     fn iter_left<'a>(&'a self, item: &'a T) -> LeftBiasIter<'a, T> {
         LeftBiasIter::new(self.top_left.as_ptr(), item)
