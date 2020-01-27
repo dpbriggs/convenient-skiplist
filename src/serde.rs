@@ -17,7 +17,7 @@ impl<'de, T: Deserialize<'de> + PartialOrd + Clone> Deserialize<'de> for SkipLis
         D: Deserializer<'de>,
     {
         let eles: Vec<T> = Deserialize::deserialize(deserializer)?;
-        Ok(SkipList::from(eles))
+        Ok(SkipList::from(eles.into_iter()))
     }
 }
 
