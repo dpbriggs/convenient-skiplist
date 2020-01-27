@@ -16,6 +16,7 @@ jobs:
       - uses: actions-rs/cargo@v1
         with:
           command: check
+          args: --features serde_support
 
   test:
     name: Test Suite
@@ -30,3 +31,4 @@ jobs:
       - uses: actions-rs/cargo@v1
         with:
           command: test
+          args: --features serde_support
