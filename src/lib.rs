@@ -469,7 +469,7 @@ impl<T: PartialOrd + Clone> SkipList<T> {
     /// ```
     #[inline]
     pub fn iter_all(&self) -> IterAll<T> {
-        unsafe { IterAll::new(self.top_left.as_ref()) }
+        unsafe { IterAll::new(self.top_left.as_ref(), self.len) }
     }
 
     /// Iterator over an inclusive range of elements in the SkipList.

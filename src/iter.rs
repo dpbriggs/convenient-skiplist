@@ -7,11 +7,13 @@ pub struct IntoIter<T> {
     _skiplist: SkipList<T>,
     curr_node: *mut Node<T>,
     finished: bool,
+    total_len: usize,
 }
 
 impl<T: Clone> Iterator for IntoIter<T> {
     type Item = T;
 
+    #[inline]
     fn next(&mut self) -> Option<Self::Item> {
         if self.finished {
             return None;
@@ -29,6 +31,11 @@ impl<T: Clone> Iterator for IntoIter<T> {
             };
         };
     }
+
+    #[inline]
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        (self.total_len, Some(self.total_len))
+    }
 }
 
 impl<T: PartialOrd + Clone> IntoIterator for SkipList<T> {
@@ -37,6 +44,7 @@ impl<T: PartialOrd + Clone> IntoIterator for SkipList<T> {
 
     fn into_iter(self) -> Self::IntoIter {
         IntoIter {
+            total_len: self.len,
             curr_node: self.top_left.as_ptr(),
             _skiplist: self,
             finished: false,
@@ -79,15 +87,17 @@ pub struct IterAll<'a, T> {
     curr_node: &'a Node<T>,
     at_bottom: bool,
     finished: bool,
+    total_len: usize,
 }
 
 impl<'a, T> IterAll<'a, T> {
     #[inline]
-    pub(crate) fn new(curr_node: &'a Node<T>) -> Self {
+    pub(crate) fn new(curr_node: &'a Node<T>, total_len: usize) -> Self {
         Self {
             curr_node,
             at_bottom: false,
             finished: false,
+            total_len,
         }
     }
 }
@@ -129,6 +139,11 @@ impl<'a, T: PartialOrd> Iterator for IterAll<'a, T> {
                 Some(to_ret.value.get_value())
             }
         }
+    }
+
+    #[inline]
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        (self.total_len, Some(self.total_len))
     }
 }
 
