@@ -1,4 +1,6 @@
-use crate::iter::{IterAll, IterRangeWith, LeftBiasIter, SkipListRange};
+use crate::iter::{
+    IterAll, IterRangeWith, LeftBiasIter, LeftBiasIterWidth, NodeWidth, SkipListRange,
+};
 use rand;
 use rand::prelude::*;
 use std::cmp::{Ordering, PartialOrd};
@@ -63,6 +65,18 @@ struct Node<T> {
     right: Option<NonNull<Node<T>>>,
     down: Option<NonNull<Node<T>>>,
     value: NodeValue<T>,
+    width: u32,
+}
+
+impl<T> Node<T> {
+    #[inline]
+    fn nodes_skipped_over(&self) -> u32 {
+        if self.width == 0 {
+            0
+        } else {
+            self.width - 1
+        }
+    }
 }
 
 impl<T: fmt::Debug> fmt::Debug for Node<T> {
@@ -81,6 +95,7 @@ impl<T: fmt::Debug> fmt::Debug for Node<T> {
                 .map(|some| format!("{:?}", unsafe { &some.as_ref().value }))
         )?;
         writeln!(f, "  value: {:?}", self.value)?;
+        writeln!(f, "  width: {:?}", self.width)?;
         write!(f, ")")
     }
 }
@@ -127,8 +142,6 @@ pub struct SkipList<T> {
     len: usize,
     _prevent_sync_send: std::marker::PhantomData<*const ()>,
 }
-
-// TODO: FromIterator
 
 impl<T> Drop for SkipList<T> {
     fn drop(&mut self) {
@@ -181,22 +194,32 @@ impl<T: PartialOrd + Clone> PartialEq for SkipList<T> {
     }
 }
 
+macro_rules! fmt_node {
+    ($f:expr, $node:expr) => {
+        write!(
+            $f,
+            "{:?}(skipped: {})",
+            $node.as_ref().value,
+            $node.as_ref().nodes_skipped_over()
+        )
+    };
+}
+
 impl<T: fmt::Debug> fmt::Debug for SkipList<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(f, "SkipList(wall_height: {}), and table:", self.height)?;
         unsafe {
-            writeln!(
-                f,
-                "{:?} -> {:?}",
-                self.top_left.as_ref().value,
-                self.top_left.as_ref().right.unwrap().as_ref().value
-            )?;
+            fmt_node!(f, self.top_left)?;
+            write!(f, " -> ")?;
+            fmt_node!(f, self.top_left.as_ref().right.unwrap())?;
+            writeln!(f)?;
             let mut curr_down = self.top_left.as_ref().down;
             while let Some(down) = curr_down {
-                write!(f, "{:?}", down.as_ref().value)?;
+                fmt_node!(f, down)?;
                 let mut curr_right = down.as_ref().right;
                 while let Some(right) = curr_right {
-                    write!(f, " -> {:?}", right.as_ref().value)?;
+                    write!(f, " -> ")?;
+                    fmt_node!(f, right)?;
                     curr_right = right.as_ref().right;
                 }
                 curr_down = down.as_ref().down;
@@ -240,7 +263,7 @@ impl<T: PartialOrd + Clone> SkipList<T> {
     #[inline]
     pub fn new() -> SkipList<T> {
         let mut sk = SkipList {
-            top_left: SkipList::pos_neg_pair(),
+            top_left: SkipList::pos_neg_pair(1),
             height: 1,
             len: 0,
             _prevent_sync_send: std::marker::PhantomData,
@@ -254,7 +277,7 @@ impl<T: PartialOrd + Clone> SkipList<T> {
     fn add_levels(&mut self, additional_levels: usize) {
         let mut curr_level = self.top_left;
         for _ in 0..additional_levels {
-            let mut new_level = SkipList::pos_neg_pair();
+            let mut new_level = SkipList::pos_neg_pair(self.len() as u32 + 1);
             // We're going to insert this `new_level` between curr_level and the row below it.
             // So it will look like:
             // | top_left -> top_right
@@ -312,14 +335,72 @@ impl<T: PartialOrd + Clone> SkipList<T> {
         // As self.path_to returns all nodes immediately *left* of where we've inserted,
         // we just need to insert the nodes after.
         let mut node_below_me = None;
-        for node in self.path_to(&item).into_iter().rev().take(height as usize) {
-            let mut new_node = SkipList::make_node(item.clone());
-            let node: *mut Node<T> = node;
+        let mut added = 0;
+        let mut total_width = None;
+        for node in self.insert_path(&item).into_iter().rev() {
             unsafe {
-                new_node.as_mut().down = node_below_me;
-                new_node.as_mut().right = (*node).right;
-                (*node).right = Some(new_node);
-                node_below_me = Some(new_node);
+                (*node.curr_node).width += 1;
+            }
+            // Set total_width from the bottom node.
+            if let None = total_width {
+                total_width = Some(node.curr_width);
+            }
+            let total_width = total_width.unwrap();
+            if added < height {
+                unsafe {
+                    // IDEA: We are iterating every node immediately *left* of where we're inserting
+                    // an element. This means we can use `total_width`, or the maximum distance
+                    // traveled to the right to reach the node to determine node widths relatively.
+                    //
+                    // eg. We insert 4 into the skiplist below:
+                    // -inf ->                ...
+                    // -inf -> 1 ->           ...
+                    // -inf -> 1 -> 2 ->      ...
+                    // -inf -> 1 -> 2 -> 3 -> ...
+                    //
+                    // Imagine a placeholder where 4 goes.
+                    //
+                    // eg. We insert 4 into the skiplist below:
+                    // -inf ->                _ -> ...
+                    // -inf -> 1 ->           _ -> ...
+                    // -inf -> 1 -> 2 ->      _ -> ...
+                    // -inf -> 1 -> 2 -> 3 -> _ -> ...
+                    //
+                    // This placeholder has then increased the width of all nodes by 1.
+                    // Once we determine height, for every element on the left,
+                    // we need to distribute the widths. We can do this
+                    // relative to `total_width`:
+                    //
+                    // 1. -inf ->                _ -> ...
+                    // 2. -inf -> 1 ->           _ -> ...
+                    // 3. -inf -> 1 -> 2 ->      _ -> ...
+                    // 4. -inf -> 1 -> 2 -> 3 -> _ -> ...
+                    //          ~    ~    ~    ~
+                    // We know how far _right_ we've been, and know that
+                    // all areas a '4' goes is going to truncate widths
+                    // of the elements to the left. For example,
+                    // row element '2' in row 3 is going to report a `node.curr_width`
+                    // of 3, so it's new width is (4 - 3) + 1 (i.e. the number of links between it and 4)
+                    //
+                    // Lastly, we distribute the remaining width after the
+                    // truncation above to the new element.
+
+                    let left_node_width = total_width - node.curr_width + 1;
+                    let new_node_width = (*node.curr_node).width - left_node_width;
+
+                    (*node.curr_node).width = left_node_width;
+
+                    debug_assert!(total_width + 1 == node.curr_width + left_node_width);
+
+                    let mut new_node = SkipList::make_node(item.clone(), new_node_width);
+
+                    let node: *mut Node<T> = node.curr_node;
+                    new_node.as_mut().down = node_below_me;
+                    new_node.as_mut().right = (*node).right;
+                    (*node).right = Some(new_node);
+                    node_below_me = Some(new_node);
+                }
+                added += 1;
             }
         }
         #[cfg(debug_assertions)]
@@ -349,14 +430,13 @@ impl<T: PartialOrd + Clone> SkipList<T> {
     /// ```
     #[inline]
     pub fn contains(&self, item: &T) -> bool {
-        unsafe {
-            let last_ptr = self.iter_left(item).last().unwrap();
-            if let Some(right) = &(*last_ptr).right {
+        self.iter_left(item).any(|node| unsafe {
+            if let Some(right) = &(*node).right {
                 &right.as_ref().value == item
             } else {
                 false
             }
-        }
+        })
     }
 
     /// Remove `item` from the SkipList.
@@ -379,24 +459,25 @@ impl<T: PartialOrd + Clone> SkipList<T> {
     /// assert!(removed);
     /// ```
     pub fn remove(&mut self, item: &T) -> bool {
-        let mut actually_removed_node = false;
+        if !self.contains(item) {
+            return false;
+        }
         for node in self.iter_left(item) {
             unsafe {
+                (*node).width -= 1;
                 // Invariant: `node` can never be PosInf
                 let right = (*node).right.unwrap();
                 if &right.as_ref().value != item {
                     continue;
                 }
                 // So the node right of us needs to be removed.
-                actually_removed_node = true;
+                (*node).width += right.as_ref().width;
                 let garbage = std::mem::replace(&mut (*node).right, right.as_ref().right);
                 drop(Box::from_raw(garbage.unwrap().as_ptr()));
             }
         }
-        if actually_removed_node {
-            self.len -= 1;
-        }
-        actually_removed_node
+        self.len -= 1;
+        true
     }
 
     /// Return the number of elements in the skiplist.
@@ -542,32 +623,37 @@ impl<T: PartialOrd + Clone> SkipList<T> {
     }
 
     #[inline]
-    fn path_to(&mut self, item: &T) -> Vec<*mut Node<T>> {
-        self.iter_left(item).collect()
+    fn insert_path(&mut self, item: &T) -> Vec<NodeWidth<T>> {
+        LeftBiasIterWidth::new(self.top_left.as_ptr(), item)
+            .into_iter()
+            .collect()
     }
 
-    fn pos_neg_pair() -> NonNull<Node<T>> {
+    fn pos_neg_pair(width: u32) -> NonNull<Node<T>> {
         let right = Box::new(Node {
             right: None,
             down: None,
             value: NodeValue::PosInf,
+            width: 0,
         });
         unsafe {
             let left = Box::new(Node {
                 right: Some(NonNull::new_unchecked(Box::into_raw(right))),
                 down: None,
                 value: NodeValue::NegInf,
+                width: width,
             });
             NonNull::new_unchecked(Box::into_raw(left))
         }
     }
 
-    fn make_node(value: T) -> NonNull<Node<T>> {
+    fn make_node(value: T, width: u32) -> NonNull<Node<T>> {
         unsafe {
             let node = Box::new(Node {
                 right: None,
                 down: None,
                 value: NodeValue::Value(value),
+                width,
             });
             NonNull::new_unchecked(Box::into_raw(node))
         }
