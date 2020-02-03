@@ -22,14 +22,14 @@ impl<T: Clone> Iterator for IntoIter<T> {
             match (*self.curr_node).right {
                 Some(right) => {
                     std::mem::replace(&mut self.curr_node, right.as_ptr());
-                    return Some((*self.curr_node).value.get_value().clone());
+                    Some((*self.curr_node).value.get_value().clone())
                 }
                 None => {
                     self.finished = true;
-                    return Some((*self.curr_node).value.get_value().clone());
+                    Some((*self.curr_node).value.get_value().clone())
                 }
-            };
-        };
+            }
+        }
     }
 
     #[inline]
@@ -221,6 +221,85 @@ impl<'a, T: PartialOrd> Iterator for SkipListRange<'a, T> {
     }
 }
 
+pub(crate) struct NodeWidth<T> {
+    pub curr_node: *mut Node<T>,
+    /// The total width traveled so _far_ in the iterator.
+    /// The last iteration is guaranteed to be the true width from
+    /// negative infinity to the element.
+    pub curr_width: u32,
+}
+
+impl<T> NodeWidth<T> {
+    pub(crate) fn new(curr_node: *mut Node<T>, curr_width: u32) -> Self {
+        Self {
+            curr_node,
+            curr_width,
+        }
+    }
+}
+
+pub(crate) struct LeftBiasIterWidth<'a, T> {
+    curr_node: *mut Node<T>,
+    total_width: u32,
+    item: &'a T,
+    finished: bool,
+}
+
+impl<'a, T> LeftBiasIterWidth<'a, T> {
+    pub(crate) fn new(curr_node: *mut Node<T>, item: &'a T) -> Self {
+        Self {
+            curr_node,
+            item,
+            finished: false,
+            total_width: 0,
+        }
+    }
+}
+
+impl<'a, T: PartialOrd> Iterator for LeftBiasIterWidth<'a, T> {
+    type Item = NodeWidth<T>;
+    #[inline]
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.finished {
+            return None;
+        }
+        unsafe {
+            loop {
+                match ((*self.curr_node).right, (*self.curr_node).down) {
+                    // We're somewhere in the middle of the skiplist
+                    (Some(right), Some(down)) => {
+                        // The node our right is smaller than `item`, so let's advance forward.
+                        if &right.as_ref().value < self.item {
+                            self.total_width += (*self.curr_node).width;
+                            self.curr_node = right.as_ptr();
+                        } else {
+                            // The node to our right is the first seen that's larger than `item`,
+                            // So we yield it and head down.
+                            let ret_node = std::mem::replace(&mut self.curr_node, down.as_ptr());
+                            return Some(NodeWidth::new(ret_node, self.total_width));
+                        }
+                    }
+                    // We're at the bottom of the skiplist
+                    (Some(right), None) => {
+                        // We're at the bottom row, and the item to our right >= `self.item`.
+                        // This is exactly the same as a linked list -- we don't want to continue further.
+                        if &right.as_ref().value >= self.item {
+                            self.finished = true;
+                            return Some(NodeWidth::new(self.curr_node, self.total_width));
+                        } else {
+                            // The node to our right is _smaller_ than us, so continue forward.
+                            self.curr_node = right.as_ptr();
+                            self.total_width += 1;
+                        }
+                    }
+                    // If we've upheld invariants correctly, there's always a right when iterating
+                    // Otherwise, some element was larger than NodeValue::PosInf.
+                    _ => unreachable!(),
+                }
+            }
+        }
+    }
+}
 /// Left-biased iteration towards `item`.
 ///
 /// Guaranteed to return an iterator of items directly left of `item`,
@@ -463,6 +542,7 @@ mod tests {
             right: None,
             down: None,
             value: NodeValue::Value(3),
+            width: 1,
         };
         let srw = IterRangeWith::new(&n, |&i| {
             if i < 2 {
