@@ -22,14 +22,14 @@ impl<T: Clone> Iterator for IntoIter<T> {
             match (*self.curr_node).right {
                 Some(right) => {
                     std::mem::replace(&mut self.curr_node, right.as_ptr());
-                    return Some((*self.curr_node).value.get_value().clone());
+                    Some((*self.curr_node).value.get_value().clone())
                 }
                 None => {
                     self.finished = true;
-                    return Some((*self.curr_node).value.get_value().clone());
+                    Some((*self.curr_node).value.get_value().clone())
                 }
-            };
-        };
+            }
+        }
     }
 
     #[inline]

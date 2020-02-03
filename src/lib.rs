@@ -184,7 +184,7 @@ impl<T: PartialOrd + Clone> FromIterator<T> for SkipList<T> {
 
 impl<T: PartialOrd + Clone, I: Iterator<Item = T>> From<I> for SkipList<T> {
     fn from(iter: I) -> Self {
-        iter.into_iter().collect()
+        iter.collect()
     }
 }
 
@@ -342,7 +342,7 @@ impl<T: PartialOrd + Clone> SkipList<T> {
                 (*node.curr_node).width += 1;
             }
             // Set total_width from the bottom node.
-            if let None = total_width {
+            if total_width.is_none() {
                 total_width = Some(node.curr_width);
             }
             let total_width = total_width.unwrap();
@@ -624,9 +624,7 @@ impl<T: PartialOrd + Clone> SkipList<T> {
 
     #[inline]
     fn insert_path(&mut self, item: &T) -> Vec<NodeWidth<T>> {
-        LeftBiasIterWidth::new(self.top_left.as_ptr(), item)
-            .into_iter()
-            .collect()
+        LeftBiasIterWidth::new(self.top_left.as_ptr(), item).collect()
     }
 
     fn pos_neg_pair(width: u32) -> NonNull<Node<T>> {
@@ -641,7 +639,7 @@ impl<T: PartialOrd + Clone> SkipList<T> {
                 right: Some(NonNull::new_unchecked(Box::into_raw(right))),
                 down: None,
                 value: NodeValue::NegInf,
-                width: width,
+                width,
             });
             NonNull::new_unchecked(Box::into_raw(left))
         }
