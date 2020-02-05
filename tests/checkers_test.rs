@@ -40,4 +40,8 @@ fn test_allocations() {
         })
         .cloned()
         .collect();
+    // checkers bug: valgrind finds no leaks with same test.
+    // let _ = sk.pop_max(1);
+    let _ = sk.at_index(1);
+    let _ = sk.index_of(&1);
 }

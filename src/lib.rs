@@ -86,15 +86,12 @@ impl<T> Node<T> {
     #[inline]
     fn clear_right(&mut self) {
         self.width = 1;
-        loop {
-            let right = self.right.unwrap();
-            unsafe {
+        unsafe {
+            while let Some(right) = self.right {
                 if right.as_ref().value.is_pos_inf() {
                     break;
                 }
-
-                let next = self.right.unwrap().as_ref().right;
-                let garbage = std::mem::replace(&mut self.right, next);
+                let garbage = std::mem::replace(&mut self.right, (*right.as_ptr()).right);
                 drop(Box::from_raw(garbage.unwrap().as_ptr()));
             }
         }
@@ -616,7 +613,8 @@ impl<T: PartialOrd + Clone> SkipList<T> {
         }
     }
 
-    /// Pop `count` elements off the end of the Skiplist. Runs in O(logn + count).
+    /// Pop `count` elements off of the end of the Skiplist.
+    /// Runs in O(logn + count) time, O(logn + count) space.
     ///
     /// Returns an empty `vec` if count == 0.
     /// Will dealloc the whole skiplist if count > usize and start fresh.
@@ -649,7 +647,6 @@ impl<T: PartialOrd + Clone> SkipList<T> {
             *self = SkipList::new(); // TODO: Does this drop me?
             return ret;
         }
-        dbg!(self.len(), count, self.len() - count);
         let ele_at = self.at_index(self.len() - count).unwrap().clone();
         self.len = self.len - count;
         // IDEA: Calculate widths by adding _backwards_ through the
@@ -661,7 +658,7 @@ impl<T: PartialOrd + Clone> SkipList<T> {
         let mut jumped_left = 1;
         unsafe {
             ret.extend(NodeRightIter::new(
-                NonNull::new((*last_value.curr_node).right.unwrap().as_ptr()).unwrap(),
+                (*last_value.curr_node).right.unwrap().as_ptr(),
             ));
             (*last_value.curr_node).clear_right();
         }

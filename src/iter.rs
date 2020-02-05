@@ -1,12 +1,12 @@
 use crate::{Node, NodeValue, RangeHint, SkipList};
-use std::ptr::NonNull;
 
+/// Iterator to grab all values from the right of `curr_node`.
 pub(crate) struct NodeRightIter<T> {
-    curr_node: NonNull<Node<T>>,
+    curr_node: *mut Node<T>,
 }
 
 impl<T> NodeRightIter<T> {
-    pub(crate) fn new(curr_node: NonNull<Node<T>>) -> Self {
+    pub(crate) fn new(curr_node: *mut Node<T>) -> Self {
         Self { curr_node }
     }
 }
@@ -17,12 +17,12 @@ impl<T: Clone> Iterator for NodeRightIter<T> {
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
         unsafe {
-            if self.curr_node.as_ref().right.is_none() {
+            if (*self.curr_node).right.is_none() {
                 return None;
             }
-            let next = self.curr_node.as_ref().right.unwrap();
+            let next = (*self.curr_node).right.unwrap().as_ptr();
             let ret = std::mem::replace(&mut self.curr_node, next);
-            Some(ret.as_ref().value.get_value().clone())
+            Some((*ret).value.get_value().clone())
         }
     }
 }
