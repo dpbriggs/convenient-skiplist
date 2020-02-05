@@ -71,11 +71,7 @@ struct Node<T> {
 impl<T> Node<T> {
     #[inline]
     fn nodes_skipped_over(&self) -> u32 {
-        if self.width == 0 {
-            0
-        } else {
-            self.width - 1
-        }
+        self.width - 1
     }
 }
 
@@ -133,7 +129,7 @@ pub enum RangeHint {
 /// assert!(!sk.contains(&10));
 /// assert!(sk.remove(&0)); // remove is also O(log(n))
 /// assert!(sk == sk); // equality checking is O(n)
-/// let from_vec = SkipList::from(vec![1u32, 2, 3].into_iter()); // From<Vec<T>> is O(n)
+/// let from_vec = SkipList::from(vec![1u32, 2, 3].into_iter()); // From<Vec<T>> is O(nlogn)
 /// assert_eq!(vec![1, 2, 3], from_vec.iter_all().cloned().collect::<Vec<u32>>());
 /// ```
 pub struct SkipList<T> {
@@ -481,6 +477,19 @@ impl<T: PartialOrd + Clone> SkipList<T> {
     }
 
     /// Return the number of elements in the skiplist.
+    ///
+    /// # Example
+    /// ```rust
+    /// use convenient_skiplist::SkipList;
+    /// let mut sk = SkipList::new();
+    ///
+    /// sk.insert(0);
+    /// assert_eq!(sk.len(), 1);
+    ///
+    /// sk.insert(1);
+    /// assert_eq!(sk.len(), 2);
+    /// ```
+
     #[inline]
     pub fn len(&self) -> usize {
         self.len
@@ -499,7 +508,7 @@ impl<T: PartialOrd + Clone> SkipList<T> {
     //     todo!()
     // }
 
-    /// Find the index of `item` in the `SkipList`. Runs in `O(n)` time.
+    /// Find the index of `item` in the `SkipList`. Runs in `O(logn)` time.
     ///
     /// # Arguments
     ///
@@ -520,7 +529,65 @@ impl<T: PartialOrd + Clone> SkipList<T> {
     /// ```
     #[inline]
     pub fn index_of(&self, item: &T) -> Option<usize> {
-        self.iter_all().position(|ele| ele == item)
+        // INVARIANT: path_to is a LeftBiasIterWidth, so there's always a
+        // node right of us.
+        self.path_to(item).last().and_then(|node| {
+            if unsafe { &(*node.curr_node).right.unwrap().as_ref().value } == item {
+                Some(node.curr_width as usize)
+            } else {
+                None
+            }
+        })
+    }
+
+    /// Get the item at the index `index `in the `SkipList`. Runs in `O(n)` time.
+    ///
+    /// # Arguments
+    ///
+    /// * `index`: the index to get the item at
+    ///
+    /// # Example
+    /// ```rust
+    /// use convenient_skiplist::SkipList;
+    /// let sk = SkipList::from(0..10);
+    /// for i in 0..10 {
+    ///     assert_eq!(Some(&i), sk.at_index(i));
+    /// }
+    /// assert_eq!(None, sk.at_index(11));
+    ///
+    /// let mut sk = SkipList::new();
+    /// sk.insert('a');
+    /// sk.insert('b');
+    /// sk.insert('c');
+    /// assert_eq!(Some(&'a'), sk.at_index(0));
+    /// assert_eq!(Some(&'b'), sk.at_index(1));
+    /// assert_eq!(Some(&'c'), sk.at_index(2));
+    /// assert_eq!(None, sk.at_index(3));
+    /// ```
+    pub fn at_index(&self, index: u32) -> Option<&T> {
+        if index >= self.len() as u32 {
+            return None;
+        }
+        unsafe {
+            let mut curr_node = self.top_left.as_ref();
+            let mut distance_left = index + 1;
+            loop {
+                if distance_left == 0 {
+                    return Some(curr_node.value.get_value());
+                }
+                if curr_node.width <= distance_left {
+                    distance_left -= curr_node.width;
+                    // INVARIANT: We've checked if `index` < self.len(),
+                    // so there's always a `right`
+                    curr_node = curr_node.right.unwrap().as_ptr().as_ref().unwrap();
+                    continue;
+                } else if let Some(down) = curr_node.down {
+                    curr_node = down.as_ptr().as_ref().unwrap();
+                } else {
+                    unreachable!()
+                }
+            }
+        }
     }
 
     /// Left-Biased iterator towards `item`.
@@ -534,7 +601,7 @@ impl<T: PartialOrd + Clone> SkipList<T> {
 
     /// Iterator over all elements in the Skiplist.
     ///
-    /// This runs in `O(n)` time.
+    /// This runs in `O(logn)` time.
     ///
     /// # Example
     ///
@@ -623,8 +690,13 @@ impl<T: PartialOrd + Clone> SkipList<T> {
     }
 
     #[inline]
+    fn path_to<'a>(&self, item: &'a T) -> LeftBiasIterWidth<'a, T> {
+        LeftBiasIterWidth::new(self.top_left.as_ptr(), item)
+    }
+
+    #[inline]
     fn insert_path(&mut self, item: &T) -> Vec<NodeWidth<T>> {
-        LeftBiasIterWidth::new(self.top_left.as_ptr(), item).collect()
+        self.path_to(item).collect()
     }
 
     fn pos_neg_pair(width: u32) -> NonNull<Node<T>> {
@@ -632,7 +704,7 @@ impl<T: PartialOrd + Clone> SkipList<T> {
             right: None,
             down: None,
             value: NodeValue::PosInf,
-            width: 0,
+            width: 1,
         });
         unsafe {
             let left = Box::new(Node {
@@ -821,5 +893,39 @@ mod tests {
         let values: Vec<u32> = (0..10).collect();
         let sk = SkipList::from(0..10);
         assert_eq!(sk.iter_all().cloned().collect::<Vec<_>>(), values);
+    }
+
+    #[test]
+    fn test_index_of() {
+        let mut sk = SkipList::new();
+        sk.insert(1);
+        sk.insert(2);
+        sk.insert(3);
+
+        assert_eq!(sk.index_of(&1), Some(0));
+        assert_eq!(sk.index_of(&2), Some(1));
+        assert_eq!(sk.index_of(&3), Some(2));
+        assert_eq!(sk.index_of(&999), None);
+        let sk = SkipList::new();
+        assert_eq!(sk.index_of(&0), None);
+        assert_eq!(sk.index_of(&999), None);
+    }
+
+    #[test]
+    fn test_at_index() {
+        let sk = SkipList::from(0..10);
+        for i in 0..10 {
+            assert_eq!(Some(&i), sk.at_index(i));
+        }
+        assert_eq!(None, sk.at_index(11));
+
+        let mut sk = SkipList::new();
+        sk.insert('a');
+        sk.insert('b');
+        sk.insert('c');
+        assert_eq!(Some(&'a'), sk.at_index(0));
+        assert_eq!(Some(&'b'), sk.at_index(1));
+        assert_eq!(Some(&'c'), sk.at_index(2));
+        assert_eq!(None, sk.at_index(3));
     }
 }

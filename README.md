@@ -138,6 +138,8 @@ for i in sk.range_with(my_range_fn) {
 - `Skiplist::iter_all` - O(n) time | O(1) space (iterator yields a single element at a time)
 - `Skiplist::range` - O(logn + k), where k is width of range | O(1) space (iterator yields a single element at a time)
 - `Skiplist::range_with` - O(logn + k), where k is width of range | O(1) space (iterator yields a single element at a time)
+- `Skiplist::index_of` - O(logn) time
+- `Skiplist::at_index` - O(logn) time
 - `PartialEq<SkipList>` - O(n) time; compare if two skiplists have the same elements
 - `From<Vec<T>>` - O(nlogn) time; generating a skiplist from a vec of items
 
