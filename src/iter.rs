@@ -1,4 +1,31 @@
 use crate::{Node, NodeValue, RangeHint, SkipList};
+use std::ptr::NonNull;
+
+pub(crate) struct NodeRightIter<T> {
+    curr_node: NonNull<Node<T>>,
+}
+
+impl<T> NodeRightIter<T> {
+    pub(crate) fn new(curr_node: NonNull<Node<T>>) -> Self {
+        Self { curr_node }
+    }
+}
+
+impl<T: Clone> Iterator for NodeRightIter<T> {
+    type Item = T;
+
+    #[inline]
+    fn next(&mut self) -> Option<Self::Item> {
+        unsafe {
+            if self.curr_node.as_ref().right.is_none() {
+                return None;
+            }
+            let next = self.curr_node.as_ref().right.unwrap();
+            let ret = std::mem::replace(&mut self.curr_node, next);
+            Some(ret.as_ref().value.get_value().clone())
+        }
+    }
+}
 
 /// Struct to keep track of things for IntoIterator
 /// *Warning*: As all nodes are heap allocated, we have
@@ -221,16 +248,17 @@ impl<'a, T: PartialOrd> Iterator for SkipListRange<'a, T> {
     }
 }
 
+#[derive(Clone)]
 pub(crate) struct NodeWidth<T> {
     pub curr_node: *mut Node<T>,
     /// The total width traveled so _far_ in the iterator.
     /// The last iteration is guaranteed to be the true width from
     /// negative infinity to the element.
-    pub curr_width: u32,
+    pub curr_width: usize,
 }
 
 impl<T> NodeWidth<T> {
-    pub(crate) fn new(curr_node: *mut Node<T>, curr_width: u32) -> Self {
+    pub(crate) fn new(curr_node: *mut Node<T>, curr_width: usize) -> Self {
         Self {
             curr_node,
             curr_width,
@@ -240,7 +268,7 @@ impl<T> NodeWidth<T> {
 
 pub(crate) struct LeftBiasIterWidth<'a, T> {
     curr_node: *mut Node<T>,
-    total_width: u32,
+    total_width: usize,
     item: &'a T,
     finished: bool,
 }
@@ -483,7 +511,7 @@ mod tests {
     #[test]
     fn test_iterall() {
         let mut sk = SkipList::new();
-        let expected: Vec<u32> = (0..10).collect();
+        let expected: Vec<usize> = (0..10).collect();
         for e in &expected {
             sk.insert(*e);
         }
@@ -497,7 +525,7 @@ mod tests {
     }
     #[test]
     fn test_empty() {
-        let sk = SkipList::<u32>::new();
+        let sk = SkipList::<usize>::new();
         let foo: Vec<_> = sk.iter_all().cloned().collect();
         assert!(foo.is_empty());
     }
@@ -508,16 +536,16 @@ mod tests {
         for i in 0..500 {
             sk.insert(i);
         }
-        let expected: Vec<u32> = (50..=100).collect();
-        let got: Vec<u32> = sk.range(&50, &100).cloned().collect();
+        let expected: Vec<usize> = (50..=100).collect();
+        let got: Vec<usize> = sk.range(&50, &100).cloned().collect();
         assert_eq!(expected, got);
     }
 
     #[test]
     fn test_range_empty() {
         let sk = SkipList::new();
-        let expected: Vec<u32> = Vec::new();
-        let got: Vec<u32> = sk.range(&50, &100).cloned().collect();
+        let expected: Vec<usize> = Vec::new();
+        let got: Vec<usize> = sk.range(&50, &100).cloned().collect();
         assert_eq!(expected, got);
     }
 
@@ -527,9 +555,9 @@ mod tests {
         for i in 20..30 {
             sk.insert(i);
         }
-        let expected: Vec<u32> = Vec::new();
-        let less: Vec<u32> = sk.range(&0, &19).cloned().collect();
-        let more: Vec<u32> = sk.range(&30, &32).cloned().collect();
+        let expected: Vec<usize> = Vec::new();
+        let less: Vec<usize> = sk.range(&0, &19).cloned().collect();
+        let more: Vec<usize> = sk.range(&30, &32).cloned().collect();
         assert_eq!(expected, less);
         assert_eq!(expected, more);
     }
@@ -572,7 +600,7 @@ mod tests {
     #[test]
     fn test_range_with() {
         use crate::iter::RangeHint;
-        let mut sk = SkipList::<u32>::new();
+        let mut sk = SkipList::<usize>::new();
         let expected = &[0, 1, 2, 3, 4, 5];
         for e in expected {
             sk.insert(*e);
@@ -595,7 +623,7 @@ mod tests {
     #[test]
     fn test_range_with_empty() {
         use crate::iter::RangeHint;
-        let sk = SkipList::<u32>::new();
+        let sk = SkipList::<usize>::new();
         let f: Vec<_> = sk
             .range_with(|&i| {
                 if i < 2 {
@@ -608,14 +636,14 @@ mod tests {
             })
             .cloned()
             .collect();
-        let expected: Vec<u32> = vec![];
+        let expected: Vec<usize> = vec![];
         assert_eq!(f, expected);
     }
 
     #[test]
     fn test_range_with_all() {
         use crate::iter::RangeHint;
-        let mut sk = SkipList::<u32>::new();
+        let mut sk = SkipList::<usize>::new();
         let expected = &[0, 1, 2, 3, 4, 5];
         for e in expected {
             sk.insert(*e);
@@ -627,7 +655,7 @@ mod tests {
     #[test]
     fn test_range_with_none() {
         use crate::iter::RangeHint;
-        let mut sk = SkipList::<u32>::new();
+        let mut sk = SkipList::<usize>::new();
         let expected = &[0, 1, 2, 3, 4, 5];
         for e in expected {
             sk.insert(*e);
@@ -637,7 +665,7 @@ mod tests {
             .cloned()
             .collect();
         // compiler bug? Should not need to specify type
-        let expected: Vec<u32> = Vec::new();
+        let expected: Vec<usize> = Vec::new();
         assert_eq!(f, expected);
         let f: Vec<_> = sk
             .range_with(|&_i| RangeHint::LargerThanRange)
@@ -652,7 +680,7 @@ mod tests {
         use crate::RangeHint;
         use rand;
         use rand::prelude::*;
-        let mut sk = SkipList::<u32>::new();
+        let mut sk = SkipList::<usize>::new();
         let expected = &[0, 1, 2, 3, 4, 5];
         for e in expected {
             sk.insert(*e);

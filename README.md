@@ -129,6 +129,17 @@ for i in sk.range_with(my_range_fn) {
 
 ```
 
+## Performance
+
+General rule of thumb: Mutate operations are microseconds, immutable nanoseconds.
+The main mutation bottleneck are heap allocations during inserts, and frees during removals.
+
+You can test how `convenient-skiplist` performs for you by using cargo bench:
+
+```bash
+$ cargo bench
+```
+
 ## Time / Space Complexities:
 
 - Skiplists have an expected space complexity of ~`2n`.
@@ -137,7 +148,7 @@ for i in sk.range_with(my_range_fn) {
 - `Skiplist::remove` - O(logn) time
 - `Skiplist::iter_all` - O(n) time | O(1) space (iterator yields a single element at a time)
 - `Skiplist::range` - O(logn + k), where k is width of range | O(1) space (iterator yields a single element at a time)
-- `Skiplist::range_with` - O(logn + k), where k is width of range | O(1) space (iterator yields a single element at a time)
+- `Skiplist::range_with` - O(logn + k + flogn), where k is width of range, f is cost of function passed | O(1) space (iterator yields a single element at a time)
 - `Skiplist::index_of` - O(logn) time
 - `Skiplist::at_index` - O(logn) time
 - `PartialEq<SkipList>` - O(n) time; compare if two skiplists have the same elements

@@ -1,5 +1,6 @@
 use crate::iter::{
-    IterAll, IterRangeWith, LeftBiasIter, LeftBiasIterWidth, NodeWidth, SkipListRange,
+    IterAll, IterRangeWith, LeftBiasIter, LeftBiasIterWidth, NodeRightIter, NodeWidth,
+    SkipListRange,
 };
 use rand;
 use rand::prelude::*;
@@ -20,10 +21,18 @@ enum NodeValue<T> {
 }
 
 impl<T> NodeValue<T> {
+    #[inline]
     fn get_value(&self) -> &T {
         match &self {
             NodeValue::Value(v) => v,
             _ => unreachable!(),
+        }
+    }
+    #[inline]
+    fn is_pos_inf(&self) -> bool {
+        match &self {
+            NodeValue::PosInf => true,
+            _ => false,
         }
     }
 }
@@ -65,13 +74,30 @@ struct Node<T> {
     right: Option<NonNull<Node<T>>>,
     down: Option<NonNull<Node<T>>>,
     value: NodeValue<T>,
-    width: u32,
+    width: usize,
 }
 
 impl<T> Node<T> {
     #[inline]
-    fn nodes_skipped_over(&self) -> u32 {
+    fn nodes_skipped_over(&self) -> usize {
         self.width - 1
+    }
+
+    #[inline]
+    fn clear_right(&mut self) {
+        self.width = 1;
+        loop {
+            let right = self.right.unwrap();
+            unsafe {
+                if right.as_ref().value.is_pos_inf() {
+                    break;
+                }
+
+                let next = self.right.unwrap().as_ref().right;
+                let garbage = std::mem::replace(&mut self.right, next);
+                drop(Box::from_raw(garbage.unwrap().as_ptr()));
+            }
+        }
     }
 }
 
@@ -118,7 +144,7 @@ pub enum RangeHint {
 ///
 /// // Make a new skiplist
 /// let mut sk = SkipList::new();
-/// for i in 0..5u32 {
+/// for i in 0..5usize {
 ///     // Inserts are O(log(n)) on average
 ///     sk.insert(i);
 /// }
@@ -129,12 +155,12 @@ pub enum RangeHint {
 /// assert!(!sk.contains(&10));
 /// assert!(sk.remove(&0)); // remove is also O(log(n))
 /// assert!(sk == sk); // equality checking is O(n)
-/// let from_vec = SkipList::from(vec![1u32, 2, 3].into_iter()); // From<Vec<T>> is O(nlogn)
-/// assert_eq!(vec![1, 2, 3], from_vec.iter_all().cloned().collect::<Vec<u32>>());
+/// let from_vec = SkipList::from(vec![1usize, 2, 3].into_iter()); // From<Vec<T>> is O(nlogn)
+/// assert_eq!(vec![1, 2, 3], from_vec.iter_all().cloned().collect::<Vec<usize>>());
 /// ```
 pub struct SkipList<T> {
     top_left: NonNull<Node<T>>,
-    height: u32,
+    height: usize,
     len: usize,
     _prevent_sync_send: std::marker::PhantomData<*const ()>,
 }
@@ -235,7 +261,7 @@ impl<T: PartialOrd + Clone> Default for SkipList<T> {
 
 /// Get the level of an item in the skiplist
 #[inline]
-fn get_level() -> u32 {
+fn get_level() -> usize {
     let mut height = 1;
     let mut rng = rand::thread_rng();
     while rng.gen::<f32>() >= 0.5 {
@@ -252,7 +278,7 @@ impl<T: PartialOrd + Clone> SkipList<T> {
     /// ```rust
     /// use convenient_skiplist::SkipList;
     /// let mut sk = SkipList::new();
-    /// sk.insert(0u32);
+    /// sk.insert(0usize);
     ///
     /// assert!(sk.contains(&0));
     /// ```
@@ -273,7 +299,7 @@ impl<T: PartialOrd + Clone> SkipList<T> {
     fn add_levels(&mut self, additional_levels: usize) {
         let mut curr_level = self.top_left;
         for _ in 0..additional_levels {
-            let mut new_level = SkipList::pos_neg_pair(self.len() as u32 + 1);
+            let mut new_level = SkipList::pos_neg_pair(self.len() + 1);
             // We're going to insert this `new_level` between curr_level and the row below it.
             // So it will look like:
             // | top_left -> top_right
@@ -285,7 +311,7 @@ impl<T: PartialOrd + Clone> SkipList<T> {
                 curr_level = new_level;
             }
         }
-        self.height += additional_levels as u32;
+        self.height += additional_levels as usize;
     }
     /// Insert `item` into the `SkipList`.
     ///
@@ -301,7 +327,7 @@ impl<T: PartialOrd + Clone> SkipList<T> {
     /// ```rust
     /// use convenient_skiplist::SkipList;
     /// let mut sk = SkipList::new();
-    /// sk.insert(0u32);
+    /// sk.insert(0usize);
     ///
     /// assert!(sk.contains(&0));
     /// ```
@@ -399,11 +425,11 @@ impl<T: PartialOrd + Clone> SkipList<T> {
                 added += 1;
             }
         }
+        self.len += 1;
         #[cfg(debug_assertions)]
         {
             self.ensure_invariants()
         }
-        self.len += 1;
         true
     }
     /// Test if `item` is in the skiplist. Returns `true` if it's in the skiplist,
@@ -420,7 +446,7 @@ impl<T: PartialOrd + Clone> SkipList<T> {
     /// ```rust
     /// use convenient_skiplist::SkipList;
     /// let mut sk = SkipList::new();
-    /// sk.insert(0u32);
+    /// sk.insert(0usize);
     ///
     /// assert!(sk.contains(&0));
     /// ```
@@ -449,7 +475,7 @@ impl<T: PartialOrd + Clone> SkipList<T> {
     /// ```rust
     /// use convenient_skiplist::SkipList;
     /// let mut sk = SkipList::new();
-    /// sk.insert(0u32);
+    /// sk.insert(0usize);
     ///
     /// let removed = sk.remove(&0);
     /// assert!(removed);
@@ -533,7 +559,7 @@ impl<T: PartialOrd + Clone> SkipList<T> {
         // node right of us.
         self.path_to(item).last().and_then(|node| {
             if unsafe { &(*node.curr_node).right.unwrap().as_ref().value } == item {
-                Some(node.curr_width as usize)
+                Some(node.curr_width)
             } else {
                 None
             }
@@ -564,8 +590,8 @@ impl<T: PartialOrd + Clone> SkipList<T> {
     /// assert_eq!(Some(&'c'), sk.at_index(2));
     /// assert_eq!(None, sk.at_index(3));
     /// ```
-    pub fn at_index(&self, index: u32) -> Option<&T> {
-        if index >= self.len() as u32 {
+    pub fn at_index(&self, index: usize) -> Option<&T> {
+        if index >= self.len() {
             return None;
         }
         unsafe {
@@ -590,12 +616,76 @@ impl<T: PartialOrd + Clone> SkipList<T> {
         }
     }
 
+    /// Pop `count` elements off the end of the Skiplist. Runs in O(logn + count).
+    ///
+    /// Returns an empty `vec` if count == 0.
+    /// Will dealloc the whole skiplist if count > usize and start fresh.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use convenient_skiplist::SkipList;
+    /// let mut sk = SkipList::from(0..10);
+    ///
+    /// assert_eq!(Some(&7), sk.at_index(7));
+    /// assert_eq!(vec![7, 8, 9], sk.pop_max(3));
+    /// assert_eq!(vec![6], sk.pop_max(1));
+    /// assert_eq!(vec![4, 5], sk.pop_max(2));
+    /// assert_eq!(vec![0, 1, 2, 3], sk.pop_max(5));
+    ///
+    /// let v: Vec<u32> = Vec::new();
+    /// assert_eq!(v, sk.pop_max(1000)); // empty
+    /// ```
+    #[inline]
+    pub fn pop_max(&mut self, count: usize) -> Vec<T> {
+        if self.is_empty() || count == 0 {
+            return vec![];
+        }
+        if count >= self.len() {
+            // let new = SkipList::new();
+            // let garbage = std::mem::replace(&mut self, &mut new);
+            // drop(garbage);
+            let ret = self.iter_all().cloned().collect();
+            *self = SkipList::new(); // TODO: Does this drop me?
+            return ret;
+        }
+        dbg!(self.len(), count, self.len() - count);
+        let ele_at = self.at_index(self.len() - count).unwrap().clone();
+        self.len = self.len - count;
+        // IDEA: Calculate widths by adding _backwards_ through the
+        // insert path.
+        let mut frontier = self.insert_path(&ele_at);
+        let last_value = frontier.last_mut().cloned().unwrap();
+        let mut last_width = last_value.curr_width;
+        let mut ret: Vec<_> = Vec::with_capacity(count);
+        let mut jumped_left = 1;
+        unsafe {
+            ret.extend(NodeRightIter::new(
+                NonNull::new((*last_value.curr_node).right.unwrap().as_ptr()).unwrap(),
+            ));
+            (*last_value.curr_node).clear_right();
+        }
+        for mut nw in frontier.into_iter().rev().skip(1) {
+            unsafe {
+                // We've jumped right, and now need to update our width field.
+                // Do we need this if-gate?
+                if (*nw.curr_node).value != (*last_value.curr_node).value {
+                    jumped_left += last_width - nw.curr_width;
+                    last_width = nw.curr_width;
+                }
+                (*nw.curr_node).clear_right();
+                (*nw.curr_node).width = jumped_left;
+            }
+        }
+        ret
+    }
+
     /// Left-Biased iterator towards `item`.
     ///
     /// Returns all possible positions *left* where `item`
     /// is or should be in the skiplist.
     #[inline]
-    fn iter_left<'a>(&'a self, item: &'a T) -> LeftBiasIter<'a, T> {
+    fn iter_left<'a>(&'a self, item: &'a T) -> impl Iterator<Item = *mut Node<T>> + 'a {
         LeftBiasIter::new(self.top_left.as_ptr(), item)
     }
 
@@ -608,9 +698,9 @@ impl<T: PartialOrd + Clone> SkipList<T> {
     /// ```rust
     /// use convenient_skiplist::SkipList;
     /// let mut sk = SkipList::new();
-    /// sk.insert(0u32);
-    /// sk.insert(1u32);
-    /// sk.insert(2u32);
+    /// sk.insert(0usize);
+    /// sk.insert(1usize);
+    /// sk.insert(2usize);
     /// for item in sk.iter_all() {
     ///     println!("{:?}", item);
     /// }
@@ -699,7 +789,7 @@ impl<T: PartialOrd + Clone> SkipList<T> {
         self.path_to(item).collect()
     }
 
-    fn pos_neg_pair(width: u32) -> NonNull<Node<T>> {
+    fn pos_neg_pair(width: usize) -> NonNull<Node<T>> {
         let right = Box::new(Node {
             right: None,
             down: None,
@@ -717,7 +807,7 @@ impl<T: PartialOrd + Clone> SkipList<T> {
         }
     }
 
-    fn make_node(value: T, width: u32) -> NonNull<Node<T>> {
+    fn make_node(value: T, width: usize) -> NonNull<Node<T>> {
         unsafe {
             let node = Box::new(Node {
                 right: None,
@@ -776,12 +866,35 @@ impl<T: PartialOrd + Clone> SkipList<T> {
     }
 
     #[cfg(debug_assertions)]
+    fn ensure_rows_sum_len(&self) {
+        let mut left_row = self.top_left;
+        let mut curr_node = self.top_left;
+        unsafe {
+            loop {
+                let mut curr_sum = 0;
+                while let Some(right) = curr_node.as_ref().right {
+                    curr_sum += curr_node.as_ref().width;
+                    curr_node = right;
+                }
+                if let Some(down) = left_row.as_ref().down {
+                    assert_eq!(self.len(), curr_sum - 1);
+                    left_row = down;
+                    curr_node = left_row;
+                } else {
+                    break;
+                }
+            }
+        }
+    }
+
+    #[cfg(debug_assertions)]
     fn ensure_invariants(&self) {
         unsafe {
             assert!(self.top_left.as_ref().right.unwrap().as_ref().value == NodeValue::PosInf)
         }
         self.ensure_rows_ordered();
         self.ensure_columns_same_value();
+        self.ensure_rows_sum_len();
     }
 }
 
@@ -804,7 +917,7 @@ mod tests {
     #[test]
     fn test_remove() {
         let mut sl = SkipList::new();
-        sl.insert(0u32);
+        sl.insert(0usize);
         assert!(sl.remove(&0));
         assert!(!sl.remove(&0));
         assert!(!sl.contains(&0));
@@ -887,10 +1000,10 @@ mod tests {
 
     #[test]
     fn test_from() {
-        let values = vec![1u32, 2, 3];
+        let values = vec![1usize, 2, 3];
         let sk = SkipList::from(values.clone().into_iter());
         assert_eq!(sk.iter_all().cloned().collect::<Vec<_>>(), values);
-        let values: Vec<u32> = (0..10).collect();
+        let values: Vec<usize> = (0..10).collect();
         let sk = SkipList::from(0..10);
         assert_eq!(sk.iter_all().cloned().collect::<Vec<_>>(), values);
     }
@@ -927,5 +1040,17 @@ mod tests {
         assert_eq!(Some(&'b'), sk.at_index(1));
         assert_eq!(Some(&'c'), sk.at_index(2));
         assert_eq!(None, sk.at_index(3));
+    }
+
+    #[test]
+    fn test_pop_max() {
+        let mut sk = SkipList::from(0..10);
+        assert_eq!(Some(&7), sk.at_index(7));
+        assert_eq!(vec![7, 8, 9], sk.pop_max(3));
+        assert_eq!(vec![6], sk.pop_max(1));
+        assert_eq!(vec![4, 5], sk.pop_max(2));
+        assert_eq!(vec![0, 1, 2, 3], sk.pop_max(5));
+        let v: Vec<u32> = Vec::new();
+        assert_eq!(v, sk.pop_max(1));
     }
 }

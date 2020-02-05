@@ -3,11 +3,11 @@ use criterion::{black_box, criterion_group, criterion_main, Criterion};
 
 fn iter_all_bench(c: &mut Criterion) {
     let mut sk = SkipList::<u32>::new();
-    let upper = 50000;
+    let upper = 500;
     for i in 0..upper {
         sk.insert(i);
     }
-    c.bench_function("iter_all(50000)", |b| {
+    c.bench_function("iter_all(500)", |b| {
         b.iter(|| {
             for i in sk.iter_all() {
                 black_box(i);
@@ -120,6 +120,34 @@ fn bench_contains_500000(c: &mut Criterion) {
     });
 }
 
+fn bench_at_index(c: &mut Criterion) {
+    let mut sk = SkipList::<u32>::new();
+    let upper = 5000;
+    for i in 0..upper {
+        black_box(sk.insert(i));
+    }
+    c.bench_function("at_index", |b| {
+        b.iter(|| {
+            black_box(sk.at_index(4001));
+        })
+    });
+}
+
+fn bench_index_of(c: &mut Criterion) {
+    let mut sk = SkipList::<u32>::new();
+    let upper = 5000;
+    for i in 0..upper {
+        black_box(sk.insert(i));
+    }
+    c.bench_function("index_of", |b| {
+        b.iter(|| {
+            black_box(sk.index_of(&4001));
+        })
+    });
+}
+
+// criterion_group!(benches, bench_at_index);
+
 criterion_group!(
     benches,
     iter_all_bench,
@@ -130,5 +158,8 @@ criterion_group!(
     bench_contains_5000,
     bench_contains_50000,
     bench_contains_500000,
+    bench_at_index,
+    bench_index_of,
 );
+
 criterion_main!(benches);
