@@ -5,13 +5,13 @@ A performant and convenient skiplist, with advanced range queries and serde supp
 To add this to your project, simply add the below to your Cargo.toml:
 
 ```
-convenient_skiplist = "0.2.6"
+convenient_skiplist = "0.3.1"
 ```
 
 Or if you want `serde` support:
 
 ```
-convenient_skiplist = { "version" = "0.2.6", features = ["serde_support"] } 
+convenient_skiplist = { "version" = "0.3.1", features = ["serde_support"] }
 ```
 
 ## Simple Example
@@ -136,7 +136,7 @@ for i in sk.range(&200, &400) {
 }
 
 // SkipList::range_with -- Fast, typically bounded by range width.
-// You need to provide a comparison function to guide the 
+// You need to provide a comparison function to guide the
 // iterator towards the desired range.
 
 use convenient_skiplist::iter::RangeHint;

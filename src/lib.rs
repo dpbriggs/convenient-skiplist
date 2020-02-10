@@ -1153,7 +1153,7 @@ mod tests {
         assert_eq!(vec![0, 1, 2, 3], sk.pop_max(5));
         let mut sk = SkipList::from(0..3);
         assert_eq!(vec![2], sk.pop_max(1));
-        let mut sk = SkipList::new();
+        let mut sk: SkipList<u32> = SkipList::new();
         let v: Vec<u32> = Vec::new();
         assert_eq!(v, sk.pop_max(1));
     }
