@@ -1,6 +1,30 @@
 use crate::{Node, NodeValue, RangeHint, SkipList};
 
-/// Iterator to grab all values from the right of `curr_node`.
+pub(crate) struct VerticalIter<T> {
+    curr_node: Option<*mut Node<T>>,
+}
+
+impl<T> VerticalIter<T> {
+    pub(crate) fn new(curr_node: *mut Node<T>) -> Self {
+        Self {
+            curr_node: Some(curr_node),
+        }
+    }
+}
+
+impl<T> Iterator for VerticalIter<T> {
+    type Item = *mut Node<T>;
+    fn next(&mut self) -> Option<Self::Item> {
+        let next = self
+            .curr_node
+            .and_then(|n| unsafe { (*n).down })
+            .map(|p| p.as_ptr());
+
+        std::mem::replace(&mut self.curr_node, next)
+    }
+}
+
+/// Iterator to grab all values from the right of `curr_node`
 pub(crate) struct NodeRightIter<T> {
     curr_node: *mut Node<T>,
 }
@@ -17,10 +41,7 @@ impl<T: Clone> Iterator for NodeRightIter<T> {
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
         unsafe {
-            if (*self.curr_node).right.is_none() {
-                return None;
-            }
-            let next = (*self.curr_node).right.unwrap().as_ptr();
+            let next = (*self.curr_node).right?.as_ptr();
             let ret = std::mem::replace(&mut self.curr_node, next);
             Some((*ret).value.get_value().clone())
         }

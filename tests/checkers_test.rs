@@ -3,9 +3,10 @@ use convenient_skiplist::{RangeHint, SkipList};
 #[global_allocator]
 static ALLOCATOR: checkers::Allocator = checkers::Allocator::system();
 
+// checkers bug: dbg! statements cause issues.
 #[checkers::test]
 fn test_allocations() {
-    let mut sk = SkipList::new();
+    let mut sk: SkipList<u32> = SkipList::new();
     let _: Vec<u32> = sk.iter_all().cloned().collect();
     let _: Vec<u32> = sk.range(&10, &20).cloned().collect();
     let _: Vec<u32> = sk.range(&10, &20).cloned().collect();
@@ -40,8 +41,8 @@ fn test_allocations() {
         })
         .cloned()
         .collect();
-    // checkers bug: valgrind finds no leaks with same test.
-    // let _ = sk.pop_max(1);
+    let _ = sk.pop_max(1);
+    let _ = sk.pop_min(1);
     let _ = sk.at_index(1);
     let _ = sk.index_of(&1);
 }

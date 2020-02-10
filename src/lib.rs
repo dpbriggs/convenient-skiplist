@@ -1,6 +1,6 @@
 use crate::iter::{
     IterAll, IterRangeWith, LeftBiasIter, LeftBiasIterWidth, NodeRightIter, NodeWidth,
-    SkipListRange,
+    SkipListRange, VerticalIter,
 };
 use rand;
 use rand::prelude::*;
@@ -614,10 +614,17 @@ impl<T: PartialOrd + Clone> SkipList<T> {
     }
 
     /// Pop `count` elements off of the end of the Skiplist.
-    /// Runs in O(logn + count) time, O(logn + count) space.
+    ///
+    /// Runs in O(logn * count) time, O(logn + count) space.
+    ///
+    /// Memory pressure: This is implemented such that the entire
+    /// region of the skiplist is cleaved off at once. So you'll
+    /// see in the worse case (i.e. all towers have maximum height ~ logn)
+    /// count * logn memory deallocations.
     ///
     /// Returns an empty `vec` if count == 0.
-    /// Will dealloc the whole skiplist if count > usize and start fresh.
+    ///
+    /// Will dealloc the whole skiplist if count >= len and start fresh.
     ///
     /// # Example
     ///
@@ -648,7 +655,7 @@ impl<T: PartialOrd + Clone> SkipList<T> {
             return ret;
         }
         let ele_at = self.at_index(self.len() - count).unwrap().clone();
-        self.len = self.len - count;
+        self.len -= count;
         // IDEA: Calculate widths by adding _backwards_ through the
         // insert path.
         let mut frontier = self.insert_path(&ele_at);
@@ -674,6 +681,103 @@ impl<T: PartialOrd + Clone> SkipList<T> {
                 (*nw.curr_node).width = jumped_left;
             }
         }
+        ret
+    }
+
+    fn iter_vertical(&self) -> impl Iterator<Item = *mut Node<T>> {
+        VerticalIter::new(self.top_left.as_ptr())
+    }
+
+    /// Pop `count` elements off of the start of the Skiplist.
+    ///
+    /// Runs in O(logn * count) time, O(count) space.
+    ///
+    /// Memory pressure: This is implemented such that the entire
+    /// region of the skiplist is cleaved off at once. So you'll
+    /// see in the worse case (i.e. all towers have maximum height ~ logn)
+    /// count * logn memory deallocations.
+    ///
+    /// Returns an empty `vec` if count == 0.
+    ///
+    /// Will dealloc the whole skiplist if count >= len and start fresh.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use convenient_skiplist::SkipList;
+    /// let mut sk = SkipList::from(0..10);
+    ///
+    /// assert_eq!(vec![0, 1, 2], sk.pop_min(3));
+    /// assert_eq!(vec![3], sk.pop_min(1));
+    /// assert_eq!(vec![4, 5], sk.pop_min(2));
+    /// assert_eq!(vec![6, 7, 8, 9], sk.pop_max(5));
+    ///
+    /// let v: Vec<u32> = Vec::new();
+    /// assert_eq!(v, sk.pop_min(1000)); // empty
+    /// ```
+    #[inline]
+    pub fn pop_min(&mut self, count: usize) -> Vec<T> {
+        if count == 0 || self.is_empty() {
+            return Vec::with_capacity(0);
+        }
+        if count >= self.len() {
+            let ret = self.iter_all().cloned().collect();
+            // Tested in valgrind -- this drops old me.
+            *self = SkipList::new();
+            return ret;
+        }
+        let ele_at = self.at_index(count).unwrap();
+        // dbg!(ele_at);
+        let mut ret = Vec::with_capacity(count);
+        for (left, row_end) in self.iter_vertical().zip(self.path_to(ele_at)) {
+            // Our path can have the same elements left and right of the
+            // frontier.
+            if std::ptr::eq(left, row_end.curr_node) {
+                unsafe { (*left).width -= count };
+                continue;
+            }
+            debug_assert!(count >= row_end.curr_width);
+            // Next, we need to unlink the nodes after left
+            // Idea: count is how many elements popped over, curr_width
+            // is how far we've traveled so far.
+            //         _
+            // -inf ->                ...
+            // -inf -> 1 ->           ...
+            // -inf -> 1 -> 2 -> 3 -> ...
+            //         ~    ~    ~
+            // width_over_removed = count(_) - count(~) = 2
+            // new_width = Node<1>.width - width_over_removed
+            let width_over_removed = count - row_end.curr_width;
+            let new_width = unsafe { (*row_end.curr_node).width - width_over_removed };
+            // Now, surgically remove this stretch of nodes.
+            unsafe {
+                let mut start_garbage = (*left).right.unwrap();
+                (*left).right = (*row_end.curr_node).right;
+                (*left).width = new_width;
+                (*row_end.curr_node).right = None;
+                // We're at the bottom, so lets grab our return values.
+                if start_garbage.as_ref().down.is_none() {
+                    let mut curr_node = start_garbage.as_ptr();
+                    loop {
+                        ret.push((*curr_node).value.get_value().clone());
+                        curr_node = match (*curr_node).right {
+                            Some(right) => right.as_ptr(),
+                            None => break,
+                        };
+                        // if let Some(right) = (*curr_node).right {
+                        //     curr_node = right.as_ptr();
+                        // } else {
+                        //     break;
+                        // }
+                        // curr_node = (*curr_node).right.unwrap().as_ptr();
+                    }
+                    // ret.extend(NodeRightIter::new(start_garbage.as_ptr()));
+                }
+                start_garbage.as_mut().clear_right();
+                drop(Box::from_raw(start_garbage.as_ptr()));
+            }
+        }
+        self.len -= count;
         ret
     }
 
@@ -1047,7 +1151,21 @@ mod tests {
         assert_eq!(vec![6], sk.pop_max(1));
         assert_eq!(vec![4, 5], sk.pop_max(2));
         assert_eq!(vec![0, 1, 2, 3], sk.pop_max(5));
+        let mut sk = SkipList::from(0..3);
+        assert_eq!(vec![2], sk.pop_max(1));
+        let mut sk = SkipList::new();
         let v: Vec<u32> = Vec::new();
         assert_eq!(v, sk.pop_max(1));
+    }
+
+    #[test]
+    fn test_pop_min() {
+        let mut sk = SkipList::from(0..10);
+        assert_eq!(vec![0, 1, 2], sk.pop_min(3));
+        assert_eq!(vec![3], sk.pop_min(1));
+        assert_eq!(vec![4, 5], sk.pop_min(2));
+        assert_eq!(vec![6, 7, 8, 9], sk.pop_min(5));
+        let v: Vec<u32> = Vec::new();
+        assert_eq!(v, sk.pop_min(1));
     }
 }

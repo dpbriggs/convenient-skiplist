@@ -45,6 +45,8 @@ NegInf -> Value(1) -> Value(2) -> PosInf
 NegInf -> Value(0) -> Value(1) -> Value(2) -> Value(3) -> Value(4) -> PosInf
 ```
 
+Scroll down or see the `examples` folder for more information.
+
 ## What this library provides
 
 This library provides tools to efficiently construct and iterate over skiplists. Under the hood it's all pointers
@@ -56,7 +58,7 @@ You can construct a skiplist, and insert elements and check if they exist in the
 
 ```rust
 // Create a new skiplist
-let mut sk = SkipList::new()
+let mut sk = SkipList::new();
 
 // Insert an element
 sk.insert(0u32);
@@ -81,6 +83,32 @@ assert_eq!(sk.index_of(&2), Some(1))
 assert_eq!(sk.index_of(&99), None)
 ```
 
+### Indexing
+
+Convenient SkipList has several index-based features:
+
+```rust
+
+use convenient_skiplist::SkipList;
+
+let mut sk = SkipList::from((b'a'..=b'z').map(|c| c as char));
+
+// Find the index (rank) of an item
+assert_eq!(sk.index_of(&'a'), Some(0));
+assert_eq!(sk.index_of(&'b'), Some(1));
+assert_eq!(sk.index_of(&'z'), Some(25));
+assert_eq!(sk.index_of(&'💩'), None);
+
+// Get the element at index (rank -> value)
+assert_eq!(sk.at_index(0), Some(&'a'));
+assert_eq!(sk.at_index(25), Some(&'z'));
+assert_eq!(sk.at_index(100), None);
+
+// We can also efficiently pop maximum and minimum values:
+assert_eq!(vec!['z'], sk.pop_max(1));
+assert_eq!(vec!['a', 'b', 'c'], sk.pop_min(3));
+```
+
 ### Iterators
 
 There's currently three main methods to iterate over a skiplist:
@@ -90,7 +118,7 @@ use convenient_skiplist::SkipList;
 
 // First make a skiplist with plenty of elements:
 
-let sk = SkipList::new()
+let sk = SkipList::new();
 for i in 0..500u32 {
     sk.insert(i);
 }
@@ -132,7 +160,7 @@ for i in sk.range_with(my_range_fn) {
 ## Performance
 
 General rule of thumb: Mutate operations are microseconds, immutable nanoseconds.
-The main mutation bottleneck are heap allocations during inserts, and frees during removals.
+The main mutation bottleneck is heap allocations and frees.
 
 You can test how `convenient-skiplist` performs for you by using cargo bench:
 
@@ -151,8 +179,10 @@ $ cargo bench
 - `Skiplist::range_with` - O(logn + k + flogn), where k is width of range, f is cost of function passed | O(1) space (iterator yields a single element at a time)
 - `Skiplist::index_of` - O(logn) time
 - `Skiplist::at_index` - O(logn) time
+- `Skiplist::pop_min` - O(logn * k) time | O(k) space, where k is the number of elements to pop
+- `Skiplist::at_index` - O(logn * k) time | O(logn + k) space, where k is the number of elements to pop
 - `PartialEq<SkipList>` - O(n) time; compare if two skiplists have the same elements
-- `From<Vec<T>>` - O(nlogn) time; generating a skiplist from a vec of items
+- `From<FromIterator<T>>` - O(nlogn) time; generating a skiplist from a iterator of `n` items
 
 ## Data Structure Description
 

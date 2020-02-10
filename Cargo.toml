@@ -1,10 +1,11 @@
 [package]
 name = "convenient-skiplist"
-version = "0.2.6"
+version = "0.3.0"
 authors = ["David Briggs <david@dpbriggs.ca>"]
 edition = "2018"
 license = "GPL-3.0-or-later"
 repository = "https://github.com/dpbriggs/convenient-skiplist"
+homepage = "https://github.com/dpbriggs/convenient-skiplist"
 keywords = ["skiplist", "serde", "advanced", "performant", "convenient"]
 categories = ["data-structures"]
 documentation = "https://docs.rs/convenient-skiplist/latest/convenient_skiplist/struct.SkipList.html"
