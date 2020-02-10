@@ -5,13 +5,13 @@ A performant and convenient skiplist, with advanced range queries and serde supp
 To add this to your project, simply add the below to your Cargo.toml:
 
 ```
-convenient_skiplist = "0.3.1"
+convenient_skiplist = "0.3.2"
 ```
 
 Or if you want `serde` support:
 
 ```
-convenient_skiplist = { "version" = "0.3.1", features = ["serde_support"] }
+convenient_skiplist = { "version" = "0.3.2", features = ["serde_support"] }
 ```
 
 ## Simple Example
@@ -71,7 +71,7 @@ assert!(sk.remove(&0))
 
 // Check the length
 assert_eq!(sk.len(), 0)
-assert_eq!(sk.is_empty(), 0)
+assert_eq!(sk.is_empty(), true)
 
 // Find the index of an element
 sk.insert(1u32);

@@ -313,7 +313,9 @@ impl<T: PartialOrd + Clone> SkipList<T> {
     /// Insert `item` into the `SkipList`.
     ///
     /// Returns `true` if the item was actually inserted (i.e. wasn't already in the skiplist)
-    /// and `false` otherwise. Runs in `O(logn)` time.
+    /// and `false` otherwise.
+    ///
+    /// Runs in `O(logn)` time.
     ///
     /// # Arguments
     ///
@@ -461,7 +463,9 @@ impl<T: PartialOrd + Clone> SkipList<T> {
     /// Remove `item` from the SkipList.
     ///
     /// Returns `true` if the item was in the collection to be removed,
-    /// and `false` otherwise. Runs in `O(logn)` time.
+    /// and `false` otherwise.
+    ///
+    /// Runs in `O(logn)` time.
     ///
     /// # Arguments
     ///
@@ -531,7 +535,9 @@ impl<T: PartialOrd + Clone> SkipList<T> {
     //     todo!()
     // }
 
-    /// Find the index of `item` in the `SkipList`. Runs in `O(logn)` time.
+    /// Find the index of `item` in the `SkipList`.
+    ///
+    /// Runs in `O(logn)` time.
     ///
     /// # Arguments
     ///
@@ -563,7 +569,9 @@ impl<T: PartialOrd + Clone> SkipList<T> {
         })
     }
 
-    /// Get the item at the index `index `in the `SkipList`. Runs in `O(n)` time.
+    /// Get the item at the index `index `in the `SkipList`.
+    ///
+    /// Runs in `O(logn)` time.
     ///
     /// # Arguments
     ///
@@ -737,7 +745,8 @@ impl<T: PartialOrd + Clone> SkipList<T> {
                 continue;
             }
             debug_assert!(count >= row_end.curr_width);
-            // Next, we need to unlink the nodes after left
+            // Next, we need to unlink the first node after `left`,
+            // and calculate width.
             // Idea: count is how many elements popped over, curr_width
             // is how far we've traveled so far.
             //         _
@@ -764,14 +773,7 @@ impl<T: PartialOrd + Clone> SkipList<T> {
                             Some(right) => right.as_ptr(),
                             None => break,
                         };
-                        // if let Some(right) = (*curr_node).right {
-                        //     curr_node = right.as_ptr();
-                        // } else {
-                        //     break;
-                        // }
-                        // curr_node = (*curr_node).right.unwrap().as_ptr();
                     }
-                    // ret.extend(NodeRightIter::new(start_garbage.as_ptr()));
                 }
                 start_garbage.as_mut().clear_right();
                 drop(Box::from_raw(start_garbage.as_ptr()));
@@ -835,6 +837,7 @@ impl<T: PartialOrd + Clone> SkipList<T> {
 
     /// Iterator over an inclusive range of elements in the SkipList,
     /// as defined by the `inclusive_fn`.
+    ///
     /// This runs in `O(logn + k)`, where k is the width of range.
     ///
     /// As the skiplist is ordered in an ascending way, `inclusive_fn` should be
