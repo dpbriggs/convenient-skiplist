@@ -7,6 +7,7 @@ use rand::prelude::*;
 use std::cmp::{Ordering, PartialOrd};
 use std::fmt;
 use std::iter::FromIterator;
+use std::ops::Index;
 use std::ptr::NonNull;
 pub mod iter;
 
@@ -191,6 +192,18 @@ impl<T> Drop for SkipList<T> {
     }
 }
 
+impl<T: Clone + PartialOrd> From<SkipList<T>> for Vec<T> {
+    fn from(sk: SkipList<T>) -> Vec<T> {
+        sk.iter_all().cloned().collect()
+    }
+}
+
+impl<T: Clone + PartialOrd> Clone for SkipList<T> {
+    fn clone(&self) -> Self {
+        SkipList::from(self.iter_all().cloned())
+    }
+}
+
 impl<T: PartialOrd + Clone> FromIterator<T> for SkipList<T> {
     fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> SkipList<T> {
         let mut sk = SkipList::new();
@@ -253,6 +266,13 @@ impl<T: PartialOrd + Clone> Default for SkipList<T> {
     #[inline]
     fn default() -> Self {
         Self::new()
+    }
+}
+
+impl<T: PartialOrd + Clone> Index<usize> for SkipList<T> {
+    type Output = T;
+    fn index(&self, index: usize) -> &Self::Output {
+        self.at_index(index).expect("index out of bounds!")
     }
 }
 
@@ -503,6 +523,28 @@ impl<T: PartialOrd + Clone> SkipList<T> {
         true
     }
 
+    /// Remove and return the item at `index`.
+    ///
+    /// Runs in O(log n) time.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use convenient_skiplist::SkipList;
+    /// let mut sk = SkipList::from(0..5);
+    ///
+    /// assert_eq!(sk.len(), 5);
+    /// assert_eq!(sk.remove_at(1), Some(1));
+    /// assert_eq!(sk.len(), 4);
+    /// ```
+    pub fn remove_at(&mut self, index: usize) -> Option<T> {
+        let item = self.at_index(index).cloned();
+        if let Some(item) = &item {
+            self.remove(item);
+        }
+        item
+    }
+
     /// Return the number of elements in the skiplist.
     ///
     /// # Example
@@ -621,6 +663,42 @@ impl<T: PartialOrd + Clone> SkipList<T> {
         }
     }
 
+    /// Peek at the first item in the skiplist.
+    ///
+    /// Runs in constant time.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use convenient_skiplist::SkipList;
+    /// let mut sk = SkipList::from(0..10);
+    ///
+    /// assert_eq!(Some(&0), sk.peek_first());
+    /// ```
+    pub fn peek_first(&self) -> Option<&T> {
+        self.at_index(0)
+    }
+
+    /// Peek at the first item in the skiplist.
+    ///
+    /// Runs in linear time.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use convenient_skiplist::SkipList;
+    /// let mut sk = SkipList::from(0..10);
+    ///
+    /// assert_eq!(Some(&9), sk.peek_last());
+    /// ```
+    pub fn peek_last(&self) -> Option<&T> {
+        if self.len == 0 {
+            None
+        } else {
+            self.at_index(self.len() - 1)
+        }
+    }
+
     /// Pop `count` elements off of the end of the Skiplist.
     ///
     /// Runs in O(logn * count) time, O(logn + count) space.
@@ -690,6 +768,46 @@ impl<T: PartialOrd + Clone> SkipList<T> {
             }
         }
         ret
+    }
+
+    /// Pop the last element off of the skiplist.
+    ///
+    /// Runs in O(logn) time, O(1) space.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use convenient_skiplist::SkipList;
+    /// let mut sk = SkipList::from(0..10);
+    ///
+    /// assert_eq!(Some(9), sk.pop_back());
+    /// ```
+    pub fn pop_back(&mut self) -> Option<T> {
+        if self.len() < 1 {
+            None
+        } else {
+            self.pop_max(1).pop()
+        }
+    }
+
+    /// Pop the first element off of the skiplist.
+    ///
+    /// Runs in O(logn) time, O(1) space.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use convenient_skiplist::SkipList;
+    /// let mut sk = SkipList::from(0..10);
+    ///
+    /// assert_eq!(Some(0), sk.pop_front());
+    /// ```
+    pub fn pop_front(&mut self) -> Option<T> {
+        if self.len() < 1 {
+            None
+        } else {
+            self.pop_min(1).pop()
+        }
     }
 
     fn iter_vertical(&self) -> impl Iterator<Item = *mut Node<T>> {
@@ -794,7 +912,7 @@ impl<T: PartialOrd + Clone> SkipList<T> {
 
     /// Iterator over all elements in the Skiplist.
     ///
-    /// This runs in `O(logn)` time.
+    /// This runs in `O(n)` time.
     ///
     /// # Example
     ///
@@ -881,6 +999,25 @@ impl<T: PartialOrd + Clone> SkipList<T> {
         F: Fn(&T) -> RangeHint,
     {
         IterRangeWith::new(unsafe { self.top_left.as_ref() }, inclusive_fn)
+    }
+
+    /// Clear (deallocate all entries in) the skiplist.
+    ///
+    /// Returns the number of elements removed (length of bottom row).
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use convenient_skiplist::{RangeHint, SkipList};
+    /// let mut sk = SkipList::from(0..10);
+    /// assert_eq!(sk.clear(), 10);
+    /// assert_eq!(sk, SkipList::new());
+    ///
+    /// ```
+    pub fn clear(&mut self) -> usize {
+        let removed = self.len();
+        *self = SkipList::new();
+        removed
     }
 
     #[inline]
@@ -1144,6 +1281,17 @@ mod tests {
         assert_eq!(Some(&'b'), sk.at_index(1));
         assert_eq!(Some(&'c'), sk.at_index(2));
         assert_eq!(None, sk.at_index(3));
+
+        assert_eq!('a', sk[0]);
+        assert_eq!('b', sk[1]);
+        assert_eq!('c', sk[2]);
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_bad_index() {
+        let sk = SkipList::from(0..10);
+        sk[sk.len()];
     }
 
     #[test]
@@ -1170,5 +1318,26 @@ mod tests {
         assert_eq!(vec![6, 7, 8, 9], sk.pop_min(5));
         let v: Vec<u32> = Vec::new();
         assert_eq!(v, sk.pop_min(1));
+    }
+
+    #[test]
+    fn test_clone() {
+        let sk = SkipList::from(0..10);
+        let clone = sk.clone();
+        assert_eq!(sk, clone);
+        assert!(!std::ptr::eq(&sk, &clone));
+    }
+
+    #[test]
+    fn test_peek() {
+        let sk = SkipList::from(0..10);
+        assert_eq!(Some(&0), sk.peek_first());
+        assert_eq!(Some(&9), sk.peek_last());
+    }
+
+    #[test]
+    fn test_vec_from() {
+        let sk: SkipList<u32> = SkipList::from(0..4);
+        assert_eq!(vec![0, 1, 2, 3], Vec::from(sk));
     }
 }
