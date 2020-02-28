@@ -637,6 +637,7 @@ impl<T: PartialOrd + Clone> SkipList<T> {
     /// assert_eq!(Some(&'c'), sk.at_index(2));
     /// assert_eq!(None, sk.at_index(3));
     /// ```
+    #[inline]
     pub fn at_index(&self, index: usize) -> Option<&T> {
         if index >= self.len() {
             return None;
@@ -675,13 +676,14 @@ impl<T: PartialOrd + Clone> SkipList<T> {
     ///
     /// assert_eq!(Some(&0), sk.peek_first());
     /// ```
+    #[inline]
     pub fn peek_first(&self) -> Option<&T> {
         self.at_index(0)
     }
 
-    /// Peek at the first item in the skiplist.
+    /// Peek at the last item in the skiplist.
     ///
-    /// Runs in linear time.
+    /// Runs in O(log n) time.
     ///
     /// # Example
     ///
@@ -691,8 +693,9 @@ impl<T: PartialOrd + Clone> SkipList<T> {
     ///
     /// assert_eq!(Some(&9), sk.peek_last());
     /// ```
+    #[inline]
     pub fn peek_last(&self) -> Option<&T> {
-        if self.len == 0 {
+        if self.is_empty() {
             None
         } else {
             self.at_index(self.len() - 1)
@@ -782,8 +785,9 @@ impl<T: PartialOrd + Clone> SkipList<T> {
     ///
     /// assert_eq!(Some(9), sk.pop_back());
     /// ```
+    #[inline]
     pub fn pop_back(&mut self) -> Option<T> {
-        if self.len() < 1 {
+        if self.is_empty() {
             None
         } else {
             self.pop_max(1).pop()
@@ -802,8 +806,9 @@ impl<T: PartialOrd + Clone> SkipList<T> {
     ///
     /// assert_eq!(Some(0), sk.pop_front());
     /// ```
+    #[inline]
     pub fn pop_front(&mut self) -> Option<T> {
-        if self.len() < 1 {
+        if self.is_empty() {
             None
         } else {
             self.pop_min(1).pop()
@@ -1339,5 +1344,18 @@ mod tests {
     fn test_vec_from() {
         let sk: SkipList<u32> = SkipList::from(0..4);
         assert_eq!(vec![0, 1, 2, 3], Vec::from(sk));
+    }
+
+    #[test]
+    fn test_more_complex_type() {
+        // A bit of history behind this test:
+        // I tried to avoid cloning by using std::ptr::read
+        // but you double free as you're copying the string struct
+        // and dropping the original. So you end up with double frees.
+        let mut string_sk = SkipList::new();
+        for c in b'a'..b'z' {
+            string_sk.insert((c as char).to_string());
+        }
+        string_sk.pop_back();
     }
 }

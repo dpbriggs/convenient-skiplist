@@ -5,13 +5,13 @@ A performant and convenient skiplist, with advanced range queries and serde supp
 To add this to your project, simply add the below to your Cargo.toml:
 
 ```
-convenient-skiplist = "0.4.0"
+convenient-skiplist = "0.4.1"
 ```
 
 Or if you want `serde` support:
 
 ```
-convenient-skiplist = { "version" = "0.4.0", features = ["serde_support"] }
+convenient-skiplist = { "version" = "0.4.1", features = ["serde_support"] }
 ```
 
 ## Simple Example
@@ -183,6 +183,8 @@ $ cargo bench
 - `Skiplist::at_index` - O(logn * k) time | O(logn + k) space, where k is the number of elements to pop
 - `PartialEq<SkipList>` - O(n) time; compare if two skiplists have the same elements
 - `From<FromIterator<T>>` - O(nlogn) time; generating a skiplist from a iterator of `n` items
+- `Skiplist::pop_back` - O(log n) time
+- `Skiplist::pop_front` - O(1) time
 
 ## Data Structure Description
 
