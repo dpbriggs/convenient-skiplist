@@ -1,6 +1,6 @@
 [package]
 name = "convenient-skiplist"
-version = "1.0.0"
+version = "1.0.1"
 authors = ["David Briggs <david@dpbriggs.ca>"]
 edition = "2018"
 license = "GPL-3.0-or-later"
@@ -32,4 +32,4 @@ serde_support = ["serde"]
 
 [dependencies]
 rand = "0.7.3"
-serde = { version = "1.0.104", optional = true }
+serde = { version = "1.0.114", optional = true }
