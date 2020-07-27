@@ -69,7 +69,7 @@ impl<T: Clone> Iterator for IntoIter<T> {
         unsafe {
             match (*self.curr_node).right {
                 Some(right) => {
-                    std::mem::replace(&mut self.curr_node, right.as_ptr());
+                    self.curr_node = right.as_ptr();
                     Some((*self.curr_node).value.get_value().clone())
                 }
                 None => {
@@ -544,6 +544,7 @@ mod tests {
         second.sort();
         assert_eq!(foo, second)
     }
+
     #[test]
     fn test_empty() {
         let sk = SkipList::<usize>::new();
@@ -551,6 +552,7 @@ mod tests {
         assert!(foo.is_empty());
     }
 
+    // MIRI: This test takes forever.
     #[test]
     fn test_range() {
         let mut sk = SkipList::new();

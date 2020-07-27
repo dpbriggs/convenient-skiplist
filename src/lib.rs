@@ -2,7 +2,6 @@ use crate::iter::{
     IterAll, IterRangeWith, LeftBiasIter, LeftBiasIterWidth, NodeRightIter, NodeWidth,
     SkipListRange, VerticalIter,
 };
-use rand;
 use rand::prelude::*;
 use std::cmp::{Ordering, PartialOrd};
 use std::fmt;
@@ -1327,10 +1326,18 @@ mod tests {
 
     #[test]
     fn test_clone() {
-        let sk = SkipList::from(0..10);
+        let sk = SkipList::from(0..30);
         let clone = sk.clone();
         assert_eq!(sk, clone);
         assert!(!std::ptr::eq(&sk, &clone));
+        // Empty case
+        let sk = SkipList::from(0..0);
+        let clone = sk.clone();
+        assert_eq!(
+            sk, clone,
+            "Empty skiplists should clone nicely, {:?} != {:?}",
+            sk, clone
+        );
     }
 
     #[test]
