@@ -1,9 +1,9 @@
 [package]
 name = "convenient-skiplist"
-version = "1.0.1"
+version = "1.0.2"
 authors = ["David Briggs <david@dpbriggs.ca>"]
 edition = "2018"
-license = "GPL-3.0-or-later"
+license = "MIT"
 repository = "https://github.com/dpbriggs/convenient-skiplist"
 homepage = "https://github.com/dpbriggs/convenient-skiplist"
 keywords = ["skiplist", "serde", "advanced", "performant", "convenient"]
