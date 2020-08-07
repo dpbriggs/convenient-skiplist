@@ -1,7 +1,8 @@
 use crate::iter::{
     IterAll, IterRangeWith, LeftBiasIter, LeftBiasIterWidth, NodeRightIter, NodeWidth,
-    SkipListRange, VerticalIter,
+    SkipListIndexRange, SkipListRange, VerticalIter,
 };
+use core::ops::RangeBounds;
 use rand::prelude::*;
 use std::cmp::{Ordering, PartialOrd};
 use std::fmt;
@@ -25,7 +26,7 @@ impl<T> NodeValue<T> {
     fn get_value(&self) -> &T {
         match &self {
             NodeValue::Value(v) => v,
-            _ => unreachable!(),
+            _ => unreachable!("Failed to get value! This shouldn't happen."),
         }
     }
     #[inline]
@@ -955,6 +956,14 @@ impl<T: PartialOrd + Clone> SkipList<T> {
     #[inline]
     pub fn range<'a>(&'a self, start: &'a T, end: &'a T) -> SkipListRange<'a, T> {
         SkipListRange::new(unsafe { self.top_left.as_ref() }, start, end)
+    }
+
+    /// Range index
+    pub fn index_range<'a, R: RangeBounds<usize>>(
+        &'a self,
+        range: R,
+    ) -> SkipListIndexRange<'a, R, T> {
+        SkipListIndexRange::new(unsafe { self.top_left.as_ref() }, range)
     }
 
     /// Iterator over an inclusive range of elements in the SkipList,
