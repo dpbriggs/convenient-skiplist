@@ -1,7 +1,8 @@
 use crate::iter::{
     IterAll, IterRangeWith, LeftBiasIter, LeftBiasIterWidth, NodeRightIter, NodeWidth,
-    SkipListRange, VerticalIter,
+    SkipListIndexRange, SkipListRange, VerticalIter,
 };
+use core::ops::RangeBounds;
 use rand::prelude::*;
 use std::cmp::{Ordering, PartialOrd};
 use std::fmt;
@@ -25,7 +26,7 @@ impl<T> NodeValue<T> {
     fn get_value(&self) -> &T {
         match &self {
             NodeValue::Value(v) => v,
-            _ => unreachable!(),
+            _ => unreachable!("Failed to get value! This shouldn't happen."),
         }
     }
     #[inline]
@@ -955,6 +956,29 @@ impl<T: PartialOrd + Clone> SkipList<T> {
     #[inline]
     pub fn range<'a>(&'a self, start: &'a T, end: &'a T) -> SkipListRange<'a, T> {
         SkipListRange::new(unsafe { self.top_left.as_ref() }, start, end)
+    }
+
+    /// Iterate over a range of indices.
+    ///
+    /// This runs in `O(logn + k)`, where k is the width of range.
+    ///
+    /// This is different than `SkipList::range` as this operates on indices and not values.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use convenient_skiplist::SkipList;
+    /// let mut sk = SkipList::new();
+    /// for c in 'a'..'z' {
+    ///     sk.insert(c);
+    /// }
+    ///
+    /// for item in sk.index_range(0..5) {
+    ///     println!("{}", item); // Prints a, b, c, d, e
+    /// }
+    /// ```
+    pub fn index_range<R: RangeBounds<usize>>(&self, range: R) -> SkipListIndexRange<'_, R, T> {
+        SkipListIndexRange::new(unsafe { self.top_left.as_ref() }, range)
     }
 
     /// Iterator over an inclusive range of elements in the SkipList,

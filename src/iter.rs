@@ -1,4 +1,6 @@
 use crate::{Node, NodeValue, RangeHint, SkipList};
+use core::ops::{Bound, RangeBounds};
+use std::hint::unreachable_unchecked;
 
 pub(crate) struct VerticalIter<T> {
     curr_node: Option<*mut Node<T>>,
@@ -99,6 +101,7 @@ impl<T: PartialOrd + Clone> IntoIterator for SkipList<T> {
         }
     }
 }
+
 // TODO: Drain
 // pub struct Drain<T> {
 //     curr_node: *mut Node<T>,
@@ -195,6 +198,130 @@ impl<'a, T: PartialOrd> Iterator for IterAll<'a, T> {
     }
 }
 
+pub struct SkipListIndexRange<'a, R: RangeBounds<usize>, T> {
+    range: R,
+    curr_node: *const Node<T>,
+    curr_index: usize,
+    phantom: std::marker::PhantomData<&'a T>,
+}
+
+impl<'a, R: RangeBounds<usize>, T> SkipListIndexRange<'a, R, T> {
+    pub(crate) fn new(curr_node: *const Node<T>, range: R) -> Self {
+        let mut curr_node = curr_node;
+        // Find closest starting node
+        let mut curr_index = 0;
+        let mut curr_node = match range.start_bound() {
+            Bound::Unbounded => {
+                while let Some(down) = unsafe { (*curr_node).down } {
+                    curr_node = down.as_ptr();
+                }
+                // Advance once to the right from neginf
+                unsafe { (*curr_node).right.unwrap().as_ptr() }
+            }
+            bound => loop {
+                unsafe {
+                    match ((*curr_node).right, (*curr_node).down) {
+                        (Some(right), Some(down)) => {
+                            let idx = match bound {
+                                Bound::Included(&idx) => {
+                                    let idx = idx + 1;
+                                    if curr_index == idx {
+                                        break curr_node;
+                                    }
+                                    idx
+                                }
+                                Bound::Excluded(&idx) => {
+                                    let idx = idx + 1;
+                                    if curr_index == idx {
+                                        break right.as_ptr();
+                                    }
+                                    idx
+                                }
+                                _ => unreachable_unchecked(),
+                            };
+                            let width = (*curr_node).width;
+                            if curr_index + width <= idx {
+                                curr_node = right.as_ptr() as *const _;
+                                curr_index += width;
+                            } else {
+                                curr_node = down.as_ptr();
+                            }
+                        }
+                        (Some(right), None) => {
+                            match bound {
+                                Bound::Included(&idx) => {
+                                    if curr_index == idx + 1 {
+                                        break curr_node;
+                                    }
+                                }
+                                Bound::Excluded(&idx) => {
+                                    if curr_index == idx + 1 {
+                                        break right.as_ptr();
+                                    }
+                                }
+                                _ => unreachable_unchecked(),
+                            };
+                            curr_node = right.as_ptr();
+                            curr_index += (*curr_node).width;
+                        }
+                        (None, None) => {
+                            break curr_node;
+                        }
+                        _ => unreachable!("264"),
+                    }
+                }
+            },
+        };
+        // Make sure we reach the bottom
+        while let Some(down) = unsafe { (*curr_node).down } {
+            curr_node = down.as_ptr();
+        }
+        Self {
+            range,
+            curr_node,
+            curr_index: curr_index.saturating_sub(1),
+            phantom: std::marker::PhantomData::default(),
+        }
+    }
+}
+
+macro_rules! get_value_and_advance {
+    ($curr:expr, $right:expr) => {{
+        Some(
+            (*std::mem::replace($curr, $right.as_ptr()))
+                .value
+                .get_value(),
+        )
+    }};
+}
+
+impl<'a, T, R: RangeBounds<usize>> Iterator for SkipListIndexRange<'a, R, T> {
+    type Item = &'a T;
+    fn next(&mut self) -> Option<Self::Item> {
+        unsafe {
+            debug_assert!((*self.curr_node).down.is_none());
+            let right = (*self.curr_node).right?;
+            match self.range.end_bound() {
+                Bound::Unbounded => get_value_and_advance!(&mut self.curr_node, right),
+                Bound::Included(&idx) => {
+                    if self.curr_index > idx {
+                        return None;
+                    }
+                    self.curr_index += 1;
+                    get_value_and_advance!(&mut self.curr_node, right)
+                }
+                Bound::Excluded(&idx) => {
+                    if self.curr_index == idx {
+                        return None;
+                    }
+                    self.curr_index += 1;
+                    get_value_and_advance!(&mut self.curr_node, right)
+                }
+            }
+        }
+    }
+}
+
 pub struct SkipListRange<'a, T> {
     curr_node: &'a Node<T>,
     start: &'a T,
@@ -250,22 +377,6 @@ impl<'a, T: PartialOrd> Iterator for SkipListRange<'a, T> {
             }
         }
         None
-        // // We are a single element left of the start of the range, so go right
-        // // curr_node is now >= self.start
-        // if &self.curr_node.value <= self.end {
-
-        // }
-        // while &self.curr_node.value <= self.end {
-        //     unsafe {
-        //         let next = self.curr_node.right.unwrap().as_ptr().as_ref().unwrap();
-        //         let curr_value = std::mem::replace(&mut self.curr_node, next);
-        //         match &curr_value.value {
-        //             NodeValue::Value(v) => return Some(v),
-        //             _ => continue,
-        //         }
-        //     }
-        // }
-        // None
     }
 }
 
@@ -618,6 +729,41 @@ mod tests {
         assert!(srw.item_in_range(&NodeValue::Value(5)) == false);
         assert!(srw.item_in_range(&NodeValue::PosInf) == false);
         assert!(srw.item_in_range(&NodeValue::NegInf) == false);
+    }
+
+    #[test]
+    fn test_index_range() {
+        use std::ops::RangeBounds;
+        fn sk_range<R: RangeBounds<usize>>(range: R) -> Vec<usize> {
+            let sk = SkipList::from(0..20);
+            sk.index_range(range).cloned().collect()
+        }
+
+        fn vec_range<R: RangeBounds<usize>>(range: R) -> Vec<usize> {
+            let mut vec: Vec<_> = (0..20).collect();
+            vec.drain(range).collect()
+        }
+
+        fn test_against<R: RangeBounds<usize> + Clone + std::fmt::Debug>(range: R) {
+            assert_eq!(
+                sk_range(range.clone()),
+                vec_range(range.clone()),
+                "\nRange that caused the failure: {:?}",
+                range
+            );
+        }
+
+        test_against(..);
+        test_against(4..10);
+        test_against(0..20);
+        test_against(20..20);
+        test_against(..20);
+        test_against(10..);
+        test_against(20..);
+        test_against(1..1);
+        test_against(1..=1);
+        test_against(3..=8);
+        test_against(..=8);
     }
 
     #[test]
