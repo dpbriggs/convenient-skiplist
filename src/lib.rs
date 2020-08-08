@@ -958,11 +958,26 @@ impl<T: PartialOrd + Clone> SkipList<T> {
         SkipListRange::new(unsafe { self.top_left.as_ref() }, start, end)
     }
 
-    /// Range index
-    pub fn index_range<'a, R: RangeBounds<usize>>(
-        &'a self,
-        range: R,
-    ) -> SkipListIndexRange<'a, R, T> {
+    /// Iterate over a range of indices.
+    ///
+    /// This runs in `O(logn + k)`, where k is the width of range.
+    ///
+    /// This is different than `SkipList::range` as this operates on indices and not values.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use convenient_skiplist::SkipList;
+    /// let mut sk = SkipList::new();
+    /// for c in 'a'..'z' {
+    ///     sk.insert(c);
+    /// }
+    ///
+    /// for item in sk.index_range(0..5) {
+    ///     println!("{}", item); // Prints a, b, c, d, e
+    /// }
+    /// ```
+    pub fn index_range<R: RangeBounds<usize>>(&self, range: R) -> SkipListIndexRange<'_, R, T> {
         SkipListIndexRange::new(unsafe { self.top_left.as_ref() }, range)
     }
 
