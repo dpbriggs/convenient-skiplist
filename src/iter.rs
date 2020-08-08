@@ -1,4 +1,6 @@
 use crate::{Node, NodeValue, RangeHint, SkipList};
+use core::ops::{Bound, RangeBounds};
+use std::hint::unreachable_unchecked;
 
 pub(crate) struct VerticalIter<T> {
     curr_node: Option<*mut Node<T>>,
@@ -196,8 +198,6 @@ impl<'a, T: PartialOrd> Iterator for IterAll<'a, T> {
     }
 }
 
-use core::ops::{Bound, RangeBounds};
-
 pub struct SkipListIndexRange<'a, R: RangeBounds<usize>, T> {
     range: R,
     curr_node: *const Node<T>,
@@ -237,7 +237,7 @@ impl<'a, R: RangeBounds<usize>, T> SkipListIndexRange<'a, R, T> {
                                     }
                                     idx
                                 }
-                                _ => unreachable!("idx 232"),
+                                _ => unreachable_unchecked(),
                             };
                             let width = (*curr_node).width;
                             if curr_index + width <= idx {
@@ -259,7 +259,7 @@ impl<'a, R: RangeBounds<usize>, T> SkipListIndexRange<'a, R, T> {
                                         break right.as_ptr();
                                     }
                                 }
-                                _ => unreachable!("idx 256"),
+                                _ => unreachable_unchecked(),
                             };
                             curr_node = right.as_ptr();
                             curr_index += (*curr_node).width;

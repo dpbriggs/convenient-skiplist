@@ -22,9 +22,26 @@ fn iter_range_bench(c: &mut Criterion) {
     for i in 0..upper {
         sk.insert(i);
     }
-    c.bench_function("iter_all(50000)", |b| {
+    c.bench_function("range(25000, 35000)", |b| {
         b.iter(|| {
             for i in sk.range(&(upper / 2), &(upper / 2 + upper / 5)) {
+                black_box(i);
+            }
+        })
+    });
+}
+
+fn iter_index_range_bench(c: &mut Criterion) {
+    let mut sk = SkipList::<u32>::new();
+    let upper = 50000;
+    for i in 0..upper {
+        sk.insert(i);
+    }
+    let start: usize = (upper / 2) as usize;
+    let end: usize = start + 100;
+    c.bench_function("index_range(50000)", |b| {
+        b.iter(|| {
+            for i in sk.index_range(start..end) {
                 black_box(i);
             }
         })
@@ -153,6 +170,7 @@ criterion_group!(
     iter_all_bench,
     iter_range_bench,
     iter_range_with_bench,
+    iter_index_range_bench,
     bench_insert_linear_500,
     bench_contains_500,
     bench_contains_5000,
