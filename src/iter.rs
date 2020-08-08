@@ -304,7 +304,7 @@ impl<'a, T, R: RangeBounds<usize>> Iterator for SkipListIndexRange<'a, R, T> {
             match self.range.end_bound() {
                 Bound::Unbounded => get_value_and_advance!(&mut self.curr_node, right),
                 Bound::Included(&idx) => {
-                    if self.curr_index >= idx + 1 {
+                    if self.curr_index > idx {
                         return None;
                     }
                     self.curr_index += 1;
