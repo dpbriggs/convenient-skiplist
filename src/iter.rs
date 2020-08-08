@@ -764,18 +764,6 @@ mod tests {
         test_against(1..=1);
         test_against(3..=8);
         test_against(..=8);
-
-        // assert_eq!(sk_range(..), vec_range(..));
-        // assert_eq!(sk_range(4..10), vec_range(4..10));
-        // assert_eq!(sk_range(0..20), vec_range(0..20));
-        // assert_eq!(sk_range(20..20), vec_range(20..20));
-        // assert_eq!(sk_range(..20), vec_range(..20));
-        // assert_eq!(sk_range(10..), vec_range(10..));
-        // assert_eq!(sk_range(20..), vec_range(20..));
-        // assert_eq!(sk_range(1..1), vec_range(1..1));
-        // assert_eq!(sk_range(1..=1), vec_range(1..=1));
-        // assert_eq!(sk_range(3..=8), vec_range(3..=8));
-        // assert_eq!(sk_range(..=8), vec_range(..=8));
     }
 
     #[test]
